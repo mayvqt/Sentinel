@@ -218,7 +218,7 @@ func runServerWithGracefulShutdown(srv *server.Server, port string) {
 		fmt.Println("║     POST /api/auth/register - Create new user account                ║")
 		fmt.Println("║     POST /api/auth/login    - Authenticate existing user             ║")
 		fmt.Println("║     GET  /api/auth/profile  - Get user profile (requires JWT)        ║")
-		fmt.Println("║     POST /api/auth/refresh  - Refresh JWT token                      ║")
+		fmt.Println("║     GET  /health            - Service health check                   ║")
 		fmt.Println("║                                                                       ║")
 		fmt.Println("║  💡 Press Ctrl+C to gracefully shutdown                              ║")
 		fmt.Println("╚═══════════════════════════════════════════════════════════════════════╝")
