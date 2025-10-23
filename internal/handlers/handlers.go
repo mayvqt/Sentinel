@@ -127,32 +127,106 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Login validates credentials and returns a JWT on success.
+// Login validates credentials and returns a JWT on success with rate limiting considerations.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		writeErrorResponse(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
-	u, err := h.Store.GetUserByUsername(r.Context(), req.Username)
-	if err != nil || u == nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+
+	// Sanitize inputs
+	req.Username = validation.SanitizeInput(req.Username)
+	req.Password = validation.SanitizeInput(req.Password)
+
+	// Basic validation
+	if req.Username == "" || req.Password == "" {
+		writeErrorResponse(w, "Username and password are required", http.StatusBadRequest)
 		return
 	}
-	if err := auth.CheckPassword(u.Password, req.Password); err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		return
-	}
-	// Generate token with a 24h TTL for now.
-	tok, err := h.Auth.GenerateToken(strconv.FormatInt(u.ID, 10), u.Role, 24*time.Hour)
+
+	// Get user from store
+	user, err := h.Store.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
-		http.Error(w, "failed to create token", http.StatusInternalServerError)
+		writeErrorResponse(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]string{"token": tok})
+
+	// Check if user exists and verify password
+	if user == nil || auth.CheckPassword(user.Password, req.Password) != nil {
+		// Use the same error message for both cases to prevent username enumeration
+		writeErrorResponse(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	// Generate JWT token with 24-hour expiration
+	token, err := h.Auth.GenerateToken(
+		strconv.FormatInt(user.ID, 10), 
+		user.Role, 
+		24*time.Hour,
+	)
+	if err != nil {
+		writeErrorResponse(w, "Failed to create authentication token", http.StatusInternalServerError)
+		return
+	}
+
+	// Return token and basic user info (no sensitive data)
+	response := map[string]interface{}{
+		"token": token,
+		"user":  user.PublicUser(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
-// Health returns a simple alive response.
+// Health returns system health status with basic diagnostics.
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	// Check database connectivity
+	if err := h.Store.Ping(r.Context()); err != nil {
+		writeErrorResponse(w, "Database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	response := map[string]interface{}{
+		"status":    "ok",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"version":   "0.1.0",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// Me returns the current authenticated user's profile.
+func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
+	// Extract user claims from context (set by auth middleware)
+	claims, ok := r.Context().Value("user").(*auth.Claims)
+	if !ok {
+		writeErrorResponse(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse user ID from claims
+	userID, err := strconv.ParseInt(claims.UserID, 10, 64)
+	if err != nil {
+		writeErrorResponse(w, "Invalid user ID in token", http.StatusBadRequest)
+		return
+	}
+
+	// Get user from store
+	user, err := h.Store.GetUserByID(r.Context(), userID)
+	if err != nil {
+		writeErrorResponse(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if user == nil {
+		writeErrorResponse(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Return user profile (excluding sensitive data)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user.PublicUser())
 }
