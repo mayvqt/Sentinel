@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mayvqt/Sentinel/internal/auth"
 	"github.com/mayvqt/Sentinel/internal/config"
@@ -261,65 +262,155 @@ func printConfigurationHelp(validationErr error) {
 func printStartupBanner(port, storeInfo string, dbHealthy, tlsEnabled bool) {
 	const boxWidth = 70
 
-	// Safe padding helper that prevents negative repeat counts.
-	pad := func(s string, width int) string {
-		if len(s) >= width {
+	// Helpers: rune-aware length, truncate, pad, and word-wrap.
+	runeLen := func(s string) int { return utf8.RuneCountInString(s) }
+
+	truncate := func(s string, width int) string {
+		if runeLen(s) <= width {
 			return s
 		}
-		padding := width - len(s)
-		if padding < 0 {
-			padding = 0
+		// build runes and slice
+		rs := []rune(s)
+		return string(rs[:width])
+	}
+
+	padRight := func(s string, width int) string {
+		l := runeLen(s)
+		if l >= width {
+			return truncate(s, width)
 		}
-		return s + strings.Repeat(" ", padding)
+		return s + strings.Repeat(" ", width-l)
+	}
+
+	// Word-wrap a string into lines no longer than width. Splits long words if needed.
+	wrap := func(s string, width int) []string {
+		if s == "" {
+			return []string{""}
+		}
+		words := strings.Fields(s)
+		var lines []string
+		var cur string
+		push := func() {
+			if cur != "" {
+				lines = append(lines, cur)
+				cur = ""
+			}
+		}
+
+		for _, w := range words {
+			// If word itself larger than width, break it into rune chunks
+			if runeLen(w) > width {
+				// flush current
+				if cur != "" {
+					lines = append(lines, cur)
+					cur = ""
+				}
+				// split word
+				rs := []rune(w)
+				for i := 0; i < len(rs); i += width {
+					end := i + width
+					if end > len(rs) {
+						end = len(rs)
+					}
+					lines = append(lines, string(rs[i:end]))
+				}
+				continue
+			}
+
+			if cur == "" {
+				cur = w
+				continue
+			}
+			if runeLen(cur)+1+runeLen(w) <= width {
+				cur = cur + " " + w
+				continue
+			}
+			push()
+			cur = w
+		}
+		push()
+		return lines
 	}
 
 	border := "+" + strings.Repeat("-", boxWidth) + "+"
 	emptyLine := "|" + strings.Repeat(" ", boxWidth) + "|"
 
-	// Build formatted lines with safe padding.
-	titleLine := fmt.Sprintf(" %s v%s ", AppName, AppVersion)
-	descLine := fmt.Sprintf(" %s ", AppDescription)
-	runtimeLine := fmt.Sprintf(" Runtime: %s on %s/%s (CPUs: %d) ",
-		runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
+	// Prepare text lines
+	titleLine := fmt.Sprintf("%s v%s", AppName, AppVersion)
+	descLine := AppDescription
+	runtimeLine := fmt.Sprintf("Runtime: %s on %s/%s (CPUs: %d)", runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
 
 	protocol := "http"
-	securityIcon := "⚠️  HTTP"
+	securityIcon := "HTTP"
 	if tlsEnabled {
 		protocol = "https"
-		securityIcon = "🔒 HTTPS"
+		securityIcon = "HTTPS"
 	}
-	portLine := fmt.Sprintf(" Port: %s | Store: %s | Protocol: %s ", port, storeInfo, securityIcon)
+	portLine := fmt.Sprintf("Port: %s | Store: %s | Protocol: %s", port, storeInfo, securityIcon)
 
 	healthStatus := "OK"
 	if !dbHealthy {
 		healthStatus = "FAILED"
 	}
-	healthLine := fmt.Sprintf(" Database: %s ", healthStatus)
+	healthLine := fmt.Sprintf("Database: %s", healthStatus)
 
-	// Print banner.
+	apiLines := []string{
+		"API Endpoints:",
+		"POST /api/auth/register - User registration",
+		"POST /api/auth/login    - User authentication",
+		"POST /api/auth/refresh  - Token refresh",
+		"GET  /api/auth/profile  - User profile (JWT required)",
+		"GET  /health            - Health check",
+	}
+
+	serverURL := fmt.Sprintf("Server: %s://localhost:%s", protocol, port)
+
+	// Print banner
 	fmt.Println()
 	fmt.Println(border)
-	fmt.Printf("|%s|\n", pad(titleLine, boxWidth))
+
+	for _, line := range wrap(titleLine, boxWidth) {
+		fmt.Printf("|%s|\n", padRight(line, boxWidth))
+	}
+
 	fmt.Println(border)
-	fmt.Printf("|%s|\n", pad(descLine, boxWidth))
+
+	for _, line := range wrap(descLine, boxWidth) {
+		fmt.Printf("|%s|\n", padRight(line, boxWidth))
+	}
+
 	fmt.Println(emptyLine)
-	fmt.Printf("|%s|\n", pad(runtimeLine, boxWidth))
-	fmt.Printf("|%s|\n", pad(portLine, boxWidth))
-	fmt.Printf("|%s|\n", pad(healthLine, boxWidth))
+
+	for _, line := range wrap(runtimeLine, boxWidth) {
+		fmt.Printf("|%s|\n", padRight(line, boxWidth))
+	}
+	for _, line := range wrap(portLine, boxWidth) {
+		fmt.Printf("|%s|\n", padRight(line, boxWidth))
+	}
+	for _, line := range wrap(healthLine, boxWidth) {
+		fmt.Printf("|%s|\n", padRight(line, boxWidth))
+	}
+
 	fmt.Println(border)
-	fmt.Printf("| %-*s |\n", boxWidth-2, "API Endpoints:")
-	fmt.Printf("| %-*s |\n", boxWidth-2, "  POST /api/auth/register - User registration")
-	fmt.Printf("| %-*s |\n", boxWidth-2, "  POST /api/auth/login    - User authentication")
-	fmt.Printf("| %-*s |\n", boxWidth-2, "  POST /api/auth/refresh  - Token refresh")
-	fmt.Printf("| %-*s |\n", boxWidth-2, "  GET  /api/auth/profile  - User profile (JWT required)")
-	fmt.Printf("| %-*s |\n", boxWidth-2, "  GET  /health            - Health check")
+
+	// API section
+	for _, l := range apiLines {
+		for _, line := range wrap(l, boxWidth-2) { // leave small margin for list indentation
+			// indent list entries by one space for readability
+			fmt.Printf("| %s |\n", padRight(line, boxWidth-2))
+		}
+	}
+
 	fmt.Println(border)
-	serverURL := fmt.Sprintf(" Server: %s://localhost:%s ", protocol, port)
-	fmt.Printf("|%s|\n", pad(serverURL, boxWidth))
+
+	for _, line := range wrap(serverURL, boxWidth) {
+		fmt.Printf("|%s|\n", padRight(line, boxWidth))
+	}
+
 	fmt.Println(border)
 
 	if !tlsEnabled {
-		fmt.Println("⚠️  WARNING: Running in HTTP mode. Enable TLS for production use.")
+		fmt.Println("WARNING: Running in HTTP mode. Enable TLS for production use.")
 		fmt.Println("Set TLS_ENABLED=true, TLS_CERT_FILE=/path/to/cert.pem, TLS_KEY_FILE=/path/to/key.pem")
 	}
 	fmt.Println()
