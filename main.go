@@ -1,14 +1,6 @@
-/*
-███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗
-██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║
-███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║
-╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║
-███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗
-╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝
-
-Sentinel Authentication Service
-Enterprise-grade JWT authentication microservice built with Go
-*/
+// Package main starts the Sentinel authentication service. The server
+// provides JWT-based authentication with access and refresh tokens,
+// request tracing via request IDs, rate limiting, and a small user store.
 package main
 
 import (
@@ -19,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -209,19 +202,20 @@ func runServerWithGracefulShutdown(srv *server.Server, port string) {
 			"url":     fmt.Sprintf("http://localhost:%s", port),
 		})
 
+		// Use consistent boxed output for clean alignment
 		fmt.Println()
-		fmt.Println("╔═══════════════════════════════════════════════════════════════════════╗")
-		fmt.Printf("║                     🚀 Sentinel server listening on :%s               ║\n", port)
-		fmt.Println("║                                                                       ║")
-		fmt.Printf("║  📍 API Base URL: http://localhost:%s/api                           ║\n", port)
-		fmt.Println("║  📖 Endpoints:                                                        ║")
-		fmt.Println("║     POST /api/auth/register - Create new user account                ║")
-		fmt.Println("║     POST /api/auth/login    - Authenticate existing user             ║")
-		fmt.Println("║     GET  /api/auth/profile  - Get user profile (requires JWT)        ║")
-		fmt.Println("║     GET  /health            - Service health check                   ║")
-		fmt.Println("║                                                                       ║")
-		fmt.Println("║  💡 Press Ctrl+C to gracefully shutdown                              ║")
-		fmt.Println("╚═══════════════════════════════════════════════════════════════════════╝")
+		printBoxTop()
+		printBoxCenterf("🚀 Sentinel server listening on :%s", port)
+		printBoxEmpty()
+		printBoxLeftf("📍 API Base URL: http://localhost:%s/api", port)
+		printBoxLeft("📖 Endpoints:")
+		printBoxLeft("POST /api/auth/register - Create new user account")
+		printBoxLeft("POST /api/auth/login    - Authenticate existing user")
+		printBoxLeft("GET  /api/auth/profile  - Get user profile (requires JWT)")
+		printBoxLeft("GET  /health            - Service health check")
+		printBoxEmpty()
+		printBoxLeft("💡 Press Ctrl+C to gracefully shutdown")
+		printBoxBottom()
 		fmt.Println()
 
 		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
@@ -254,13 +248,57 @@ func runServerWithGracefulShutdown(srv *server.Server, port string) {
 // printBanner displays a professional application banner with system information
 func printBanner() {
 	fmt.Println()
-	fmt.Println("╔═══════════════════════════════════════════════════════════════════════╗")
-	fmt.Printf("║                          🛡️  %s v%s                          ║\n", AppName, AppVersion)
-	fmt.Println("║                                                                       ║")
-	fmt.Printf("║  %s  ║\n", AppDescription)
-	fmt.Println("║                                                                       ║")
-	fmt.Printf("║  🔧 Runtime: %-20s 💻 Platform: %s/%s     ║\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
-	fmt.Printf("║  ⚡ CPUs:    %-20d 👤 Author:   %-15s ║\n", runtime.NumCPU(), AppAuthor)
-	fmt.Println("╚═══════════════════════════════════════════════════════════════════════╝")
+	printBoxTop()
+	printBoxCenterf("🛡️ %s v%s", AppName, AppVersion)
+	printBoxEmpty()
+	printBoxLeft(AppDescription)
+	printBoxEmpty()
+	printBoxLeftf("🔧 Runtime: %s  Platform: %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	printBoxLeftf("⚡ CPUs: %d  Author: %s", runtime.NumCPU(), AppAuthor)
+	printBoxBottom()
 	fmt.Println()
+}
+
+// Box printing helpers
+const boxWidth = 71 // inner width of the box
+
+func padToWidth(s string, width int) string {
+	if len(s) >= width {
+		return s[:width]
+	}
+	return s + strings.Repeat(" ", width-len(s))
+}
+
+func printBoxTop() {
+	fmt.Println("╔" + strings.Repeat("═", boxWidth) + "╗")
+}
+
+func printBoxBottom() {
+	fmt.Println("╚" + strings.Repeat("═", boxWidth) + "╝")
+}
+
+func printBoxEmpty() {
+	fmt.Printf("║%s║\n", padToWidth("", boxWidth))
+}
+
+func printBoxLeft(s string) {
+	fmt.Printf("║ %s %s║\n", s, padToWidth("", boxWidth-2-len(s)))
+}
+
+func printBoxLeftf(format string, a ...interface{}) {
+	s := fmt.Sprintf(format, a...)
+	if len(s) > boxWidth-2 {
+		s = s[:boxWidth-5] + "..."
+	}
+	printBoxLeft(s)
+}
+
+func printBoxCenterf(format string, a ...interface{}) {
+	s := fmt.Sprintf(format, a...)
+	if len(s) > boxWidth {
+		s = s[:boxWidth]
+	}
+	left := (boxWidth - len(s)) / 2
+	right := boxWidth - len(s) - left
+	fmt.Printf("║%s%s%s║\n", strings.Repeat(" ", left), s, strings.Repeat(" ", right))
 }

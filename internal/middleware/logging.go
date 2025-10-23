@@ -7,7 +7,7 @@ import (
 	"github.com/mayvqt/Sentinel/internal/logger"
 )
 
-// responseWriter wraps http.ResponseWriter to capture status code.
+// responseWriter records status and response size for logging.
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int

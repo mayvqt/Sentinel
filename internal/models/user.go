@@ -1,4 +1,4 @@
-// Package models contains domain model types used across the service.
+// Package models contains domain model types.
 package models
 
 import "time"

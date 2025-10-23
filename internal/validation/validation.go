@@ -1,4 +1,4 @@
-// Package validation provides input validation utilities with security best practices.
+// Package validation contains input validation and sanitization helpers.
 package validation
 
 import (

@@ -1,4 +1,4 @@
-// Package middleware provides HTTP middleware for security and rate limiting.
+// Package middleware provides HTTP middleware utilities.
 package middleware
 
 import (
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// RateLimiter implements a token bucket rate limiter with atomic operations.
+// RateLimiter implements a token-bucket limiter optimized for concurrency.
 type RateLimiter struct {
 	mu       sync.RWMutex
 	visitors map[string]*visitor

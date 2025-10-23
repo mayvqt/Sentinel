@@ -32,8 +32,8 @@ func withTimeout(ctx context.Context, timeout time.Duration) (context.Context, c
 	return context.WithTimeout(ctx, timeout)
 }
 
-// NewSQLite creates or opens an SQLite database at path with enterprise-grade configuration.
-// Configures WAL mode, foreign keys, and connection pooling for optimal performance.
+// NewSQLite opens (or creates) an SQLite database and applies schema.
+// It configures WAL, foreign keys, and a tuned connection pool.
 func NewSQLite(path string) (Store, error) {
 	// Parse database URL to extract path
 	dbPath := strings.TrimPrefix(path, "sqlite://")

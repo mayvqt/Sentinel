@@ -1,7 +1,5 @@
-// Package handlers provides HTTP handlers and route wiring.
-//
-// Handlers should be thin: validate input, call services/store, and write
-// responses. Keep business logic out of handlers to make testing easier.
+// Package handlers contains HTTP handlers. Keep handlers thin: validate
+// input, call services/store, and write responses.
 package handlers
 
 import (

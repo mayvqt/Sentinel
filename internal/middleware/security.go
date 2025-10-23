@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-// WithSecurityHeaders adds security headers to responses.
+// WithSecurityHeaders adds common security headers to responses.
 func WithSecurityHeaders() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,15 +1,7 @@
 # 🛡️ Sentinel
 
-```
-███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗
-██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║
-███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║
-╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║
-███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗
-╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝
-```
-
-**Enterprise-grade JWT authentication microservice built with Go**
+Enterprise-grade JWT authentication microservice built with Go — small,
+easy to deploy, and suitable as an auth microservice for your stack.
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.3-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -28,7 +20,8 @@ Sentinel is a modern, production-ready authentication microservice designed for 
 - 📝 **Structured Logging** - Contextual logging with multiple severity levels
 - 🚀 **Production Ready** - Graceful shutdown, health checks, and robust error handling
 - 🧪 **Well Tested** - Extensive unit test coverage for critical components
-- 🔄 **Token Refresh** - Secure token refresh mechanism with rotation support
+- 🔄 **Token Refresh** - Access + refresh tokens with rotation support
+- 🆔 **Request IDs** - Every request includes a request ID header (`X-Request-ID`) for tracing
 - ⚡ **High Performance** - Lightweight and efficient with minimal dependencies
 
 ## 🏗️ Architecture
@@ -38,15 +31,15 @@ sentinel/
 ├── cmd/
 │   └── server/          # Alternative server entry point
 ├── internal/
-│   ├── auth/           # Authentication logic and password hashing
+│   ├── auth/           # JWT and password helpers
 │   ├── config/         # Configuration management
-│   ├── handlers/       # HTTP request handlers
-│   ├── logger/         # Structured logging utilities
-│   ├── middleware/     # HTTP middleware (auth, rate limiting, CORS)
-│   ├── models/         # Data models
-│   ├── server/         # Server setup and routing
-│   ├── store/          # Data persistence layer (SQLite/Memory)
-│   └── validation/     # Input validation and sanitization
+│   ├── handlers/       # HTTP handlers
+│   ├── logger/         # Structured logger
+│   ├── middleware/     # Security, CORS, rate limit, request-ID
+│   ├── models/         # Domain models
+│   ├── server/         # HTTP server wiring
+│   ├── store/          # SQLite and in-memory stores
+│   └── validation/     # Input validation
 ```
 
 ## 🚀 Quick Start
@@ -215,20 +208,21 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ### Get User Profile
 
-**GET** `/api/users/me`
+**GET** `/api/auth/profile`
 
-Get the authenticated user's profile information.
+Get the authenticated user's profile. This endpoint requires an access token.
 
 **Request:**
 ```bash
-curl http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+curl http://localhost:8080/api/auth/profile \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "X-Request-ID: your-request-id-optional"
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "id": "uuid-here",
+  "id": "1",
   "username": "johndoe",
   "email": "john@example.com",
   "created_at": "2025-10-23T12:00:00Z"

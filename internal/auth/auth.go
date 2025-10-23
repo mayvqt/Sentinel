@@ -1,6 +1,5 @@
-// Package auth provides simple helpers for password hashing and JWT tokens.
-// The implementation favors clear, easy-to-read code. Keep Auth instances
-// small and pass them to handlers with dependency injection.
+// Package auth provides password hashing and JWT helpers used by handlers.
+// It supports access and refresh tokens and returns/accepts simple Claims.
 package auth
 
 import (
