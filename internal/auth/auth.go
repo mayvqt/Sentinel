@@ -1,25 +1,110 @@
-// Package auth implements authentication helpers: password hashing and JWT
-// creation/validation. Keep cryptographic secrets out of source control.
+// Package auth provides simple helpers for password hashing and JWT tokens.
+// The implementation favors clear, easy-to-read code. Keep Auth instances
+// small and pass them to handlers with dependency injection.
 package auth
 
-import "time"
+import (
+	"errors"
+	"time"
 
-// Claims represents JWT claims (user id and role).
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/mayvqt/Sentinel/internal/config"
+	"golang.org/x/crypto/bcrypt"
+)
+
+var (
+	// ErrEmptyPassword is returned when callers provide an empty password.
+	ErrEmptyPassword = errors.New("empty password")
+
+	// ErrNoSecret is returned when an Auth instance was created without a
+	// JWT secret in the configuration.
+	ErrNoSecret = errors.New("jwt secret not configured")
+)
+
+// Claims is the JWT payload used throughout the API. Keep fields minimal to
+// avoid overloading tokens with data.
 type Claims struct {
-	UserID string
-	Role   string
+	UserID string `json:"uid"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
 }
 
-// HashPassword returns a bcrypt hash for the given password.
-// Implemented in auth/hash.go; signature kept here for clarity.
-func HashPassword(password string) (string, error) { return "", nil }
+// Auth holds the JWT signing secret and provides token helpers.
+type Auth struct{ secret string }
 
-// CheckPassword compares a bcrypt hash with a plaintext password.
-func CheckPassword(hash, password string) error { return nil }
+// New returns an Auth configured from cfg. If cfg is nil, the returned Auth
+// will have an empty secret and token operations will fail with ErrNoSecret.
+func New(cfg *config.Config) *Auth {
+	var s string
+	if cfg != nil {
+		s = cfg.JWTSecret
+	}
+	return &Auth{secret: s}
+}
 
-// GenerateToken creates a signed JWT for a user with a role and expiration.
-// Implementation should read signing secret from environment.
-func GenerateToken(userID, role string, exp time.Duration) (string, error) { return "", nil }
+// HashPassword returns a bcrypt hash for pw. Use the returned string for
+// storing user passwords. Returns ErrEmptyPassword when pw is empty.
+func HashPassword(pw string) (string, error) {
+	if pw == "" {
+		return "", ErrEmptyPassword
+	}
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
 
-// ParseToken validates a token string and returns its Claims.
-func ParseToken(tokenStr string) (*Claims, error) { return &Claims{}, nil }
+// CheckPassword verifies pw against a bcrypt hash. Returns nil on match.
+func CheckPassword(hash, pw string) error {
+	if hash == "" || pw == "" {
+		return bcrypt.ErrMismatchedHashAndPassword
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw))
+}
+
+// GenerateToken signs a JWT for userID with the given role and ttl.
+// ttl must be > 0.
+func (a *Auth) GenerateToken(userID, role string, ttl time.Duration) (string, error) {
+	if a.secret == "" {
+		return "", ErrNoSecret
+	}
+	if ttl <= 0 {
+		return "", errors.New("ttl must be > 0")
+	}
+	now := time.Now()
+	c := Claims{
+		UserID: userID,
+		Role:   role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		},
+	}
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
+	return t.SignedString([]byte(a.secret))
+}
+
+// ParseToken validates tokenStr and returns its Claims when valid.
+func (a *Auth) ParseToken(tokenStr string) (*Claims, error) {
+	if a.secret == "" {
+		return nil, ErrNoSecret
+	}
+	if tokenStr == "" {
+		return nil, errors.New("token empty")
+	}
+	c := &Claims{}
+	t, err := jwt.ParseWithClaims(tokenStr, c, func(tok *jwt.Token) (interface{}, error) {
+		if _, ok := tok.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(a.secret), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !t.Valid {
+		return nil, errors.New("token invalid")
+	}
+	return c, nil
+}

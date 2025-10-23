@@ -1,3 +1,10 @@
-// Package handlers provides HTTP handlers and route wiring. Keep handlers
-// thin and delegate business logic to service layer code.
+// Package handlers provides HTTP handlers and route wiring.
+//
+// Handlers should be thin: validate input, call services/store, and write
+// responses. Keep business logic out of handlers to make testing easier.
 package handlers
+
+// Typical responsibilities:
+// - Register endpoints (POST /register, POST /login, GET /me)
+// - Marshal/unmarshal JSON payloads
+// - Return appropriate HTTP status codes
