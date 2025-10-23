@@ -9,8 +9,8 @@ import (
 	"github.com/mayvqt/Sentinel/internal/models"
 )
 
-// memStore is a simple in-memory Store implementation for development and
-// tests. It is not durable and not intended for production use.
+// memStore is a simple in-memory Store for development and tests.
+// Not durable; not for production use.
 type memStore struct {
 	mu     sync.RWMutex
 	next   int64

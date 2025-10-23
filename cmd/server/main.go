@@ -1,4 +1,4 @@
-// Package main starts the Sentinel HTTP server.
+// Package main starts a simple server used to run Sentinel in local mode.
 package main
 
 import (

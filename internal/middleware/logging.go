@@ -28,7 +28,7 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// WithLogging returns middleware that logs HTTP requests with structured logging.
+// WithLogging returns middleware that logs HTTP requests.
 func WithLogging() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

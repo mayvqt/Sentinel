@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// RateLimiter implements a token-bucket limiter optimized for concurrency.
+// RateLimiter is a token-bucket limiter optimized for concurrency.
 type RateLimiter struct {
 	mu       sync.RWMutex
 	visitors map[string]*visitor

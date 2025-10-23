@@ -1,4 +1,4 @@
-// Package config provides typed access to runtime configuration values.
+// Package config provides typed runtime configuration.
 package config
 
 import (
@@ -14,21 +14,11 @@ type Config struct {
 	JWTSecret   string
 }
 
-// Load returns a Config populated from environment variables and .env files.
-// It first attempts to load from .env file, then reads from environment variables.
-// Environment variables take precedence over .env file values.
+// Load reads configuration from .env and environment variables.
 func Load() (*Config, error) {
-	// Try to load .env file from current directory
-	// This will silently fail if .env doesn't exist, which is fine
 	_ = godotenv.Load()
 
-	// Also try to load from common locations
-	locations := []string{
-		".env",
-		".env.local",
-		"config/.env",
-	}
-
+	locations := []string{".env", ".env.local", "config/.env"}
 	for _, location := range locations {
 		if _, err := os.Stat(location); err == nil {
 			_ = godotenv.Load(location)

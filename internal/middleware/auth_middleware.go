@@ -7,8 +7,7 @@ import (
 	"github.com/mayvqt/Sentinel/internal/auth"
 )
 
-// WithAuth returns a middleware that validates the Bearer token and stores
-// the parsed claims in the request context.
+// WithAuth validates Bearer tokens and stores claims in request context.
 func WithAuth(a *auth.Auth) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -3,7 +3,7 @@ package models
 
 import "time"
 
-// User represents an application user. Store only hashed passwords in the database.
+// User represents an application user. Store only hashed password hashes.
 type User struct {
 	ID        int64     `json:"id" db:"id"`
 	Username  string    `json:"username" db:"username"`

@@ -1,4 +1,4 @@
-// Package logger provides a small structured logger used across the app.
+// Package logger provides a small structured JSON logger used across the app.
 package logger
 
 import (

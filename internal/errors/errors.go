@@ -1,4 +1,4 @@
-// Package errors provides custom error types for enterprise-grade error handling.
+// Package errors provides application-specific error types and helpers.
 package errors
 
 import (
