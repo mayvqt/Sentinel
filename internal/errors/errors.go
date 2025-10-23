@@ -33,9 +33,9 @@ const (
 	ErrCodeRateLimit ErrorCode = "RATE_LIMIT_EXCEEDED"
 
 	// Server errors
-	ErrCodeInternal      ErrorCode = "INTERNAL_ERROR"
-	ErrCodeUnavailable   ErrorCode = "SERVICE_UNAVAILABLE"
-	ErrCodeBadRequest    ErrorCode = "BAD_REQUEST"
+	ErrCodeInternal       ErrorCode = "INTERNAL_ERROR"
+	ErrCodeUnavailable    ErrorCode = "SERVICE_UNAVAILABLE"
+	ErrCodeBadRequest     ErrorCode = "BAD_REQUEST"
 	ErrCodeNotImplemented ErrorCode = "NOT_IMPLEMENTED"
 )
 

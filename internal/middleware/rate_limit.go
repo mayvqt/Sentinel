@@ -6,18 +6,22 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// RateLimiter implements a token bucket rate limiter.
+// RateLimiter implements a token bucket rate limiter with atomic operations.
 type RateLimiter struct {
 	mu       sync.RWMutex
 	visitors map[string]*visitor
 	rate     time.Duration // Time between requests
 	capacity int           // Maximum burst capacity
+	stopChan chan struct{} // Channel to stop cleanup goroutine
+	stopped  int32         // Atomic flag to indicate if stopped
 }
 
 type visitor struct {
+	mu       sync.Mutex
 	lastSeen time.Time
 	tokens   int
 }
@@ -30,6 +34,8 @@ func NewRateLimiter(rate time.Duration, capacity int) *RateLimiter {
 		visitors: make(map[string]*visitor),
 		rate:     rate,
 		capacity: capacity,
+		stopChan: make(chan struct{}),
+		stopped:  0,
 	}
 
 	// Start cleanup goroutine
@@ -38,21 +44,43 @@ func NewRateLimiter(rate time.Duration, capacity int) *RateLimiter {
 	return rl
 }
 
-// Allow checks if a request should be allowed based on the client IP.
-func (rl *RateLimiter) Allow(ip string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
+// Stop gracefully stops the rate limiter cleanup goroutine.
+func (rl *RateLimiter) Stop() {
+	if atomic.CompareAndSwapInt32(&rl.stopped, 0, 1) {
+		close(rl.stopChan)
+	}
+}
 
+// Allow checks if a request should be allowed based on the client IP.
+// Uses fine-grained locking for better concurrency.
+func (rl *RateLimiter) Allow(ip string) bool {
 	now := time.Now()
+
+	// Try to get existing visitor with read lock first
+	rl.mu.RLock()
 	v, exists := rl.visitors[ip]
+	rl.mu.RUnlock()
 
 	if !exists {
-		rl.visitors[ip] = &visitor{
-			lastSeen: now,
-			tokens:   rl.capacity - 1, // Use one token
+		// Create new visitor with write lock
+		rl.mu.Lock()
+		// Double-check in case another goroutine created it
+		v, exists = rl.visitors[ip]
+		if !exists {
+			v = &visitor{
+				lastSeen: now,
+				tokens:   rl.capacity - 1, // Use one token
+			}
+			rl.visitors[ip] = v
+			rl.mu.Unlock()
+			return true
 		}
-		return true
+		rl.mu.Unlock()
 	}
+
+	// Lock the specific visitor for thread-safe token updates
+	v.mu.Lock()
+	defer v.mu.Unlock()
 
 	// Add tokens based on time elapsed
 	elapsed := now.Sub(v.lastSeen)
@@ -76,18 +104,42 @@ func (rl *RateLimiter) Allow(ip string) bool {
 }
 
 // cleanup removes old visitor entries to prevent memory leaks.
+// Runs periodically until Stop() is called.
 func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rl.mu.Lock()
-		cutoff := time.Now().Add(-10 * time.Minute)
+	for {
+		select {
+		case <-ticker.C:
+			rl.cleanupVisitors()
+		case <-rl.stopChan:
+			return
+		}
+	}
+}
 
-		for ip, v := range rl.visitors {
-			if v.lastSeen.Before(cutoff) {
-				delete(rl.visitors, ip)
-			}
+// cleanupVisitors removes stale visitor entries.
+func (rl *RateLimiter) cleanupVisitors() {
+	cutoff := time.Now().Add(-10 * time.Minute)
+	toDelete := make([]string, 0)
+
+	// Collect IPs to delete with read lock
+	rl.mu.RLock()
+	for ip, v := range rl.visitors {
+		v.mu.Lock()
+		if v.lastSeen.Before(cutoff) {
+			toDelete = append(toDelete, ip)
+		}
+		v.mu.Unlock()
+	}
+	rl.mu.RUnlock()
+
+	// Delete with write lock if needed
+	if len(toDelete) > 0 {
+		rl.mu.Lock()
+		for _, ip := range toDelete {
+			delete(rl.visitors, ip)
 		}
 		rl.mu.Unlock()
 	}

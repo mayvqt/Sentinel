@@ -28,6 +28,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	// Health check endpoint
 	mux.Handle("/health", applyMiddleware(
 		http.HandlerFunc(h.Health),
+		middleware.WithRequestID(),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(generalRateLimit),
 		middleware.WithLogging(),
@@ -36,6 +37,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	// Authentication endpoints with /api/auth prefix and stricter rate limiting
 	mux.Handle("/api/auth/register", applyMiddleware(
 		http.HandlerFunc(h.Register),
+		middleware.WithRequestID(),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
 		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
@@ -44,6 +46,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 
 	mux.Handle("/api/auth/login", applyMiddleware(
 		http.HandlerFunc(h.Login),
+		middleware.WithRequestID(),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
 		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
@@ -52,6 +55,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 
 	mux.Handle("/api/auth/refresh", applyMiddleware(
 		http.HandlerFunc(h.RefreshToken),
+		middleware.WithRequestID(),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
 		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
@@ -61,6 +65,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	// Protected endpoints with /api/auth prefix
 	mux.Handle("/api/auth/profile", applyMiddleware(
 		http.HandlerFunc(h.Me),
+		middleware.WithRequestID(),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(generalRateLimit),
 		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
