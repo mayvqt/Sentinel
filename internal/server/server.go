@@ -11,13 +11,13 @@ import (
 	"github.com/mayvqt/Sentinel/internal/store"
 )
 
-// Server holds the components needed to run the HTTP server.
+// Server holds the HTTP server and store.
 type Server struct {
 	httpServer *http.Server
 	store      store.Store
 }
 
-// New constructs a Server with security middleware and rate limiting.
+// New constructs a Server with middleware and routes configured.
 func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	mux := http.NewServeMux()
 
@@ -85,7 +85,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	return &Server{httpServer: srv, store: s}
 }
 
-// applyMiddleware applies middleware in reverse order (last applied runs first).
+// applyMiddleware composes middleware into a single http.Handler.
 func applyMiddleware(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		handler = middlewares[i](handler)
@@ -93,7 +93,7 @@ func applyMiddleware(handler http.Handler, middlewares ...func(http.Handler) htt
 	return handler
 }
 
-// Start runs the server until the provided context is canceled.
+// Start runs the HTTP server until ctx is canceled.
 func (s *Server) Start(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
@@ -106,12 +106,12 @@ func (s *Server) Start(ctx context.Context) error {
 	return s.httpServer.ListenAndServe()
 }
 
-// Shutdown gracefully shuts down the server.
+// Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// Close cleans up store and other resources.
+// Close releases server resources (store close).
 func (s *Server) Close() error {
 	return s.store.Close()
 }

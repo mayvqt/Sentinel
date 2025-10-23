@@ -1,5 +1,5 @@
-// Package auth provides password hashing and JWT helpers used by handlers.
-// It supports access and refresh tokens and returns/accepts simple Claims.
+// Package auth provides password hashing and JWT helpers.
+// It supports access and refresh tokens used by the API.
 package auth
 
 import (
@@ -20,8 +20,8 @@ var (
 	ErrNoSecret = errors.New("jwt secret not configured")
 )
 
-// Claims is the JWT payload used throughout the API. Keep fields minimal to
-// avoid overloading tokens with data.
+// Claims is the JWT payload used throughout the API.
+// Keep fields minimal to avoid overloading tokens with data.
 type Claims struct {
 	UserID    string `json:"uid"`
 	Role      string `json:"role"`
@@ -29,11 +29,9 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// Auth holds the JWT signing secret and provides token helpers.
 type Auth struct{ secret string }
 
-// New returns an Auth configured from cfg. If cfg is nil, the returned Auth
-// will have an empty secret and token operations will fail with ErrNoSecret.
+// New returns an Auth configured from cfg. If cfg is nil, operations will fail.
 func New(cfg *config.Config) *Auth {
 	var s string
 	if cfg != nil {
@@ -42,9 +40,8 @@ func New(cfg *config.Config) *Auth {
 	return &Auth{secret: s}
 }
 
-// HashPassword returns a bcrypt hash for pw. Use the returned string for
-// storing user passwords. Returns ErrEmptyPassword when pw is empty.
-// Uses cost factor of 12 for enhanced security (enterprise-grade).
+// HashPassword returns a bcrypt hash for pw. Returns ErrEmptyPassword if pw is empty.
+// Uses cost factor 12 for strong security.
 func HashPassword(pw string) (string, error) {
 	if pw == "" {
 		return "", ErrEmptyPassword
@@ -59,7 +56,7 @@ func HashPassword(pw string) (string, error) {
 	return string(b), nil
 }
 
-// CheckPassword verifies pw against a bcrypt hash. Returns nil on match.
+// CheckPassword compares a bcrypt hash with the provided password.
 func CheckPassword(hash, pw string) error {
 	if hash == "" || pw == "" {
 		return bcrypt.ErrMismatchedHashAndPassword
@@ -67,14 +64,12 @@ func CheckPassword(hash, pw string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw))
 }
 
-// GenerateToken signs a JWT for userID with the given role and ttl.
-// ttl must be > 0. tokenType should be "access" or "refresh".
+// GenerateToken signs an access JWT for userID with the given role and ttl.
 func (a *Auth) GenerateToken(userID, role string, ttl time.Duration) (string, error) {
 	return a.GenerateTokenWithType(userID, role, "access", ttl)
 }
 
-// GenerateTokenWithType signs a JWT with a specific token type.
-// tokenType should be "access" or "refresh".
+// GenerateTokenWithType signs a JWT with a specific tokenType ("access" or "refresh").
 func (a *Auth) GenerateTokenWithType(userID, role, tokenType string, ttl time.Duration) (string, error) {
 	if a.secret == "" {
 		return "", ErrNoSecret

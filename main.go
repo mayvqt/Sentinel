@@ -1,6 +1,5 @@
-// Package main starts the Sentinel authentication service. The server
-// provides JWT-based authentication with access and refresh tokens,
-// request tracing via request IDs, rate limiting, and a small user store.
+// Package main starts the Sentinel authentication service.
+// It wires configuration, logging, storage, auth, and HTTP server.
 package main
 
 import (
@@ -31,8 +30,7 @@ const (
 	AppAuthor      = "mayvqt"
 )
 
-// main is the application entrypoint. It orchestrates service initialization,
-// configuration loading, and graceful shutdown handling.
+// main is the application entrypoint. It initializes services and runs the server.
 func main() {
 	// ┌─────────────────────────────────────────────────────────────────────┐
 	// │                          INITIALIZATION                             │
@@ -106,7 +104,7 @@ func main() {
 // │                            HELPER FUNCTIONS                             │
 // └─────────────────────────────────────────────────────────────────────────┘
 
-// validateConfiguration ensures all required configuration values are present
+// validateConfiguration checks required config values.
 func validateConfiguration(cfg *config.Config) error {
 	if cfg.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required")
@@ -114,7 +112,7 @@ func validateConfiguration(cfg *config.Config) error {
 	return nil
 }
 
-// printConfigurationHelp displays helpful setup instructions for missing config
+// printConfigurationHelp prints setup tips when configuration is missing.
 func printConfigurationHelp() {
 	fmt.Println()
 	fmt.Println("╔═══════════════════════════════════════════════════════════════════════╗")
@@ -139,7 +137,7 @@ func printConfigurationHelp() {
 	fmt.Println()
 }
 
-// logSystemInfo displays system and runtime information
+// logSystemInfo logs basic runtime and system information.
 func logSystemInfo(port string) {
 	logger.Info("🚀 Initializing Sentinel Authentication Service", map[string]interface{}{
 		"app":     AppName,
@@ -152,7 +150,7 @@ func logSystemInfo(port string) {
 	})
 }
 
-// initializeStore creates and configures the data storage backend
+// initializeStore returns the configured Store implementation.
 func initializeStore(cfg *config.Config) (store.Store, error) {
 	var s store.Store
 	var err error
@@ -175,7 +173,7 @@ func initializeStore(cfg *config.Config) (store.Store, error) {
 	return s, nil
 }
 
-// testDatabaseConnection verifies database connectivity
+// testDatabaseConnection pings the store to verify connectivity.
 func testDatabaseConnection(s store.Store) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -188,7 +186,7 @@ func testDatabaseConnection(s store.Store) error {
 	return nil
 }
 
-// runServerWithGracefulShutdown starts the HTTP server and handles graceful shutdown
+// runServerWithGracefulShutdown runs the server and performs graceful shutdown.
 func runServerWithGracefulShutdown(srv *server.Server, port string) {
 	// Set up graceful shutdown context
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

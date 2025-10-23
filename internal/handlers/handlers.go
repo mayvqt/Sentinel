@@ -1,5 +1,5 @@
-// Package handlers contains HTTP handlers. Keep handlers thin: validate
-// input, call services/store, and write responses.
+// Package handlers contains HTTP handlers used by the API.
+// Handlers should be thin: validate input, call services, and write responses.
 package handlers
 
 import (
@@ -16,13 +16,12 @@ import (
 	"github.com/mayvqt/Sentinel/internal/validation"
 )
 
-// Handlers holds dependencies for HTTP endpoints.
 type Handlers struct {
 	Store store.Store
 	Auth  *auth.Auth
 }
 
-// New constructs handlers with dependencies injected.
+// New returns a Handlers instance with injected dependencies.
 func New(s store.Store, a *auth.Auth) *Handlers {
 	return &Handlers{Store: s, Auth: a}
 }
@@ -33,7 +32,7 @@ type ErrorResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-// writeErrorResponse writes a structured error response.
+// writeErrorResponse writes a simple JSON error response.
 func writeErrorResponse(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -64,7 +63,7 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// Register creates a new user with comprehensive validation and security checks.
+// Register handles POST /api/auth/register and creates a new user.
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	log := logger.WithFields(map[string]interface{}{
 		"handler":  "register",
@@ -166,7 +165,9 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
-} // Login validates credentials and returns a JWT on success with rate limiting considerations.
+}
+
+// Login handles POST /api/auth/login and returns access and refresh tokens.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -234,7 +235,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Health returns system health status with basic diagnostics.
+// Health returns a basic health check response.
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	// Check database connectivity
 	if err := h.Store.Ping(r.Context()); err != nil {
@@ -252,7 +253,7 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Me returns the current authenticated user's profile.
+// Me returns the authenticated user's profile (requires auth middleware).
 func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	// Extract user claims from context (set by auth middleware)
 	claims, ok := r.Context().Value("user").(*auth.Claims)
@@ -285,8 +286,7 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user.PublicUser())
 }
 
-// RefreshToken exchanges a valid refresh token for new access and refresh tokens.
-// This implements token rotation for enhanced security.
+// RefreshToken exchanges a refresh token for new access and refresh tokens.
 func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req refreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
