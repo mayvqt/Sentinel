@@ -40,7 +40,22 @@ func main() {
 
 	// Validate required configuration
 	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
+		fmt.Println()
+		fmt.Println("❌ Configuration Error: JWT_SECRET environment variable is required")
+		fmt.Println()
+		fmt.Println("🔧 Quick Setup:")
+		fmt.Println("   $env:JWT_SECRET = \"your-secure-secret-key\"")
+		fmt.Println("   $env:PORT = \"8080\"")
+		fmt.Println("   $env:DATABASE_URL = \"sqlite://./sentinel.db\"")
+		fmt.Println("   go run .")
+		fmt.Println()
+		fmt.Println("📝 Or use the development script:")
+		fmt.Println("   .\\scripts\\start-dev.ps1")
+		fmt.Println()
+		fmt.Println("🔒 Generate a secure JWT secret:")
+		fmt.Println("   [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes(32) | ForEach {$_.ToString('x2')} | Join-String")
+		fmt.Println()
+		os.Exit(1)
 	}
 
 	// Set default port

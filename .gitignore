@@ -5,3 +5,4 @@ bin/
 .env
 sentinel.db
 scripts/start-dev.ps1
+scripts/start-prod.ps1
