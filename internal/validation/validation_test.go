@@ -123,7 +123,7 @@ func TestSanitizeInput(t *testing.T) {
 		{"with whitespace", "  hello world  ", "hello world"},
 		{"with null bytes", "hello\x00world", "helloworld"},
 		{"with control chars", "hello\x01\x02world", "helloworld"},
-		{"with tabs and newlines", "hello\tworld\n", "hello\tworld\n"},
+		{"with tabs and newlines", "hello\tworld\n", "hello\tworld"},
 		{"empty string", "", ""},
 	}
 
