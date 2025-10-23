@@ -1,3 +1,4 @@
+// Package server wires HTTP routes and middleware into a runnable server.
 package server
 
 import (

@@ -1,3 +1,4 @@
+// Package store provides persistence interfaces and implementations.
 package store
 
 import (

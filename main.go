@@ -1,9 +1,10 @@
-// Package main bootstraps the Sentinel service for local execution.
-// It initializes config, logging, storage, auth, handlers, and the HTTP server.
+// Package main is the entry point for the Sentinel authentication service.
+// It orchestrates configuration loading, dependency initialization, and HTTP server lifecycle.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,7 +23,7 @@ import (
 	"github.com/mayvqt/Sentinel/internal/store"
 )
 
-// Application metadata
+// Application metadata constants.
 const (
 	AppName        = "Sentinel"
 	AppVersion     = "0.1.0"
@@ -30,273 +31,252 @@ const (
 	AppAuthor      = "mayvqt"
 )
 
-// main is the application entrypoint. It initializes services and runs the server.
+// Exit codes for different failure scenarios.
+const (
+	ExitCodeSuccess         = 0
+	ExitCodeConfigError     = 1
+	ExitCodeStoreError      = 2
+	ExitCodeServerError     = 3
+	ExitCodeShutdownTimeout = 4
+)
+
+// Operational timeouts.
+const (
+	DatabasePingTimeout     = 5 * time.Second
+	GracefulShutdownTimeout = 30 * time.Second
+	DefaultPort             = "8080"
+)
+
 func main() {
-	// ┌─────────────────────────────────────────────────────────────────────┐
-	// │                          INITIALIZATION                             │
-	// └─────────────────────────────────────────────────────────────────────┘
+	os.Exit(run())
+}
 
-	// Display application banner
-	printBanner()
+// run encapsulates the main application logic and returns an exit code.
+// This pattern enables proper cleanup via deferred functions and testability.
+func run() int {
+	// Initialize structured logging subsystem.
+	logger.SetLevel(logger.LevelInfo)
 
-	// Load configuration from environment and .env files
+	// Load configuration from environment and .env file.
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("❌ Configuration loading failed: %v", err)
+		log.Printf("Configuration load failed: %v", err)
+		return ExitCodeConfigError
 	}
 
-	// Initialize structured logging
-	logger.SetLevel(logger.LevelInfo)
-	logger.Info("Configuration loaded successfully", map[string]interface{}{
-		"app":     AppName,
-		"version": AppVersion,
-	})
-
-	// ┌─────────────────────────────────────────────────────────────────────┐
-	// │                          VALIDATION                                 │
-	// └─────────────────────────────────────────────────────────────────────┘
-
+	// Validate required configuration parameters.
 	if err := validateConfiguration(cfg); err != nil {
-		printConfigurationHelp()
-		os.Exit(1)
+		printConfigurationHelp(err)
+		return ExitCodeConfigError
 	}
 
-	// Set default port if not specified
-	port := cfg.Port
-	if port == "" {
-		port = "8080"
-		logger.Info("Using default port", map[string]interface{}{"port": port})
-	}
+	// Determine server port with fallback to default.
+	port := resolvePort(cfg.Port)
 
-	// ┌─────────────────────────────────────────────────────────────────────┐
-	// │                       SERVICE STARTUP                               │
-	// └─────────────────────────────────────────────────────────────────────┘
-
-	logSystemInfo(port)
-
-	// Initialize data store
-	store, err := initializeStore(cfg)
+	// Initialize data store (SQLite or in-memory).
+	dataStore, storeInfo, err := initializeStore(cfg)
 	if err != nil {
-		log.Fatalf("❌ Store initialization failed: %v", err)
+		log.Printf("Store initialization failed: %v", err)
+		return ExitCodeStoreError
 	}
-	defer store.Close()
-
-	// Test database connectivity
-	if err := testDatabaseConnection(store); err != nil {
-		log.Fatalf("❌ Database connection failed: %v", err)
-	}
-
-	// Initialize authentication and handlers
-	authService := auth.New(cfg)
-	handlerService := handlers.New(store, authService)
-
-	// Create HTTP server
-	srv := server.New(":"+port, store, handlerService)
-
-	// ┌─────────────────────────────────────────────────────────────────────┐
-	// │                      GRACEFUL SHUTDOWN                              │
-	// └─────────────────────────────────────────────────────────────────────┘
-
-	runServerWithGracefulShutdown(srv, port)
-}
-
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │                            HELPER FUNCTIONS                             │
-// └─────────────────────────────────────────────────────────────────────────┘
-
-// validateConfiguration checks required config values.
-func validateConfiguration(cfg *config.Config) error {
-	if cfg.JWTSecret == "" {
-		return fmt.Errorf("JWT_SECRET environment variable is required")
-	}
-	return nil
-}
-
-// printConfigurationHelp prints setup tips when configuration is missing.
-func printConfigurationHelp() {
-	fmt.Println()
-	fmt.Println("╔═══════════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                         ⚠️  CONFIGURATION ERROR                       ║")
-	fmt.Println("╚═══════════════════════════════════════════════════════════════════════╝")
-	fmt.Println()
-	fmt.Println("❌ Missing required environment variable: JWT_SECRET")
-	fmt.Println()
-	fmt.Println("🔧 Quick Setup (PowerShell):")
-	fmt.Println("   $env:JWT_SECRET = \"your-secure-secret-key\"")
-	fmt.Println("   $env:PORT = \"8080\"")
-	fmt.Println("   $env:DATABASE_URL = \"sqlite://./sentinel.db\"")
-	fmt.Println("   go run .")
-	fmt.Println()
-	fmt.Println("📝 Alternative - Create .env file:")
-	fmt.Println("   JWT_SECRET=your-secure-secret-key")
-	fmt.Println("   PORT=8080")
-	fmt.Println("   DATABASE_URL=sqlite://./sentinel.db")
-	fmt.Println()
-	fmt.Println("🔒 Generate a secure JWT secret:")
-	fmt.Println("   [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes(32) | ForEach {$_.ToString('x2')} | Join-String")
-	fmt.Println()
-}
-
-// logSystemInfo logs basic runtime and system information.
-func logSystemInfo(port string) {
-	logger.Info("🚀 Initializing Sentinel Authentication Service", map[string]interface{}{
-		"app":     AppName,
-		"version": AppVersion,
-		"port":    port,
-		"go":      runtime.Version(),
-		"os":      runtime.GOOS,
-		"arch":    runtime.GOARCH,
-		"cpus":    runtime.NumCPU(),
-	})
-}
-
-// initializeStore returns the configured Store implementation.
-func initializeStore(cfg *config.Config) (store.Store, error) {
-	var s store.Store
-	var err error
-
-	if cfg.DatabaseURL != "" {
-		// Production SQLite store
-		s, err = store.NewSQLite(cfg.DatabaseURL)
-		if err != nil {
-			return nil, fmt.Errorf("SQLite store initialization failed: %w", err)
-		}
-		logger.Info("✅ SQLite store initialized", map[string]interface{}{
-			"database_url": cfg.DatabaseURL,
-		})
-	} else {
-		// Development in-memory store
-		s = store.NewMemStore()
-		logger.Warn("⚠️  Using in-memory store (development only - data will not persist)")
-	}
-
-	return s, nil
-}
-
-// testDatabaseConnection pings the store to verify connectivity.
-func testDatabaseConnection(s store.Store) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := s.Ping(ctx); err != nil {
-		return fmt.Errorf("database ping failed: %w", err)
-	}
-
-	logger.Info("✅ Database connection verified")
-	return nil
-}
-
-// runServerWithGracefulShutdown runs the server and performs graceful shutdown.
-func runServerWithGracefulShutdown(srv *server.Server, port string) {
-	// Set up graceful shutdown context
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// Start server in background goroutine
-	go func() {
-		logger.Info("🌐 HTTP server starting", map[string]interface{}{
-			"port":    port,
-			"address": ":" + port,
-			"url":     fmt.Sprintf("http://localhost:%s", port),
-		})
-
-		// Use consistent boxed output for clean alignment
-		fmt.Println()
-		printBoxTop()
-		printBoxCenterf("🚀 Sentinel server listening on :%s", port)
-		printBoxEmpty()
-		printBoxLeftf("📍 API Base URL: http://localhost:%s/api", port)
-		printBoxLeft("📖 Endpoints:")
-		printBoxLeft("POST /api/auth/register - Create new user account")
-		printBoxLeft("POST /api/auth/login    - Authenticate existing user")
-		printBoxLeft("GET  /api/auth/profile  - Get user profile (requires JWT)")
-		printBoxLeft("GET  /health            - Service health check")
-		printBoxEmpty()
-		printBoxLeft("💡 Press Ctrl+C to gracefully shutdown")
-		printBoxBottom()
-		fmt.Println()
-
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
-			logger.Error("❌ Server startup failed", map[string]interface{}{
-				"error": err.Error(),
+	defer func() {
+		if closeErr := dataStore.Close(); closeErr != nil {
+			logger.Error("Store cleanup failed", map[string]interface{}{
+				"error": closeErr.Error(),
 			})
 		}
 	}()
 
-	// Wait for shutdown signal
-	<-ctx.Done()
-	logger.Info("🛑 Shutdown signal received - initiating graceful shutdown")
+	// Verify database connectivity before proceeding.
+	ctx, cancel := context.WithTimeout(context.Background(), DatabasePingTimeout)
+	defer cancel()
 
-	// Graceful shutdown with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := dataStore.Ping(ctx); err != nil {
+		log.Printf("Database connectivity check failed: %v", err)
+		return ExitCodeStoreError
+	}
+
+	// Initialize authentication service.
+	authService := auth.New(cfg)
+
+	// Initialize HTTP handlers.
+	handlerService := handlers.New(dataStore, authService)
+
+	// Create HTTP server instance.
+	srv := server.New(":"+port, dataStore, handlerService)
+
+	// Display startup information.
+	printStartupBanner(port, storeInfo, true)
+
+	// Run server with graceful shutdown handling.
+	if err := runServerWithGracefulShutdown(srv); err != nil {
+		log.Printf("Server execution failed: %v", err)
+		return ExitCodeServerError
+	}
+
+	logger.Info("Service terminated successfully")
+	return ExitCodeSuccess
+}
+
+// validateConfiguration validates all required configuration parameters.
+func validateConfiguration(cfg *config.Config) error {
+	if cfg == nil {
+		return errors.New("configuration is nil")
+	}
+
+	if cfg.JWTSecret == "" {
+		return errors.New("JWT_SECRET is required")
+	}
+
+	return nil
+}
+
+// resolvePort determines the HTTP server port with fallback to default.
+func resolvePort(configuredPort string) string {
+	if configuredPort != "" {
+		return configuredPort
+	}
+	return DefaultPort
+}
+
+// initializeStore creates and configures the data store based on configuration.
+func initializeStore(cfg *config.Config) (store.Store, string, error) {
+	if cfg.DatabaseURL != "" {
+		// Production mode: use SQLite persistent store.
+		sqlStore, err := store.NewSQLite(cfg.DatabaseURL)
+		if err != nil {
+			return nil, "", fmt.Errorf("SQLite initialization: %w", err)
+		}
+		storeDesc := fmt.Sprintf("SQLite (%s)", cfg.DatabaseURL)
+		return sqlStore, storeDesc, nil
+	}
+
+	// Development mode: use in-memory ephemeral store.
+	memStore := store.NewMemStore()
+	logger.Warn("Using in-memory store (data will not persist across restarts)")
+	return memStore, "in-memory (development)", nil
+}
+
+// runServerWithGracefulShutdown starts the HTTP server and handles shutdown signals.
+func runServerWithGracefulShutdown(srv *server.Server) error {
+	// Create context that cancels on interrupt or termination signal.
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+	)
+	defer stop()
+
+	// Channel to capture server startup errors.
+	serverErrors := make(chan error, 1)
+
+	// Start HTTP server in background goroutine.
+	go func() {
+		if err := srv.Start(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrors <- fmt.Errorf("server start: %w", err)
+		}
+	}()
+
+	// Block until shutdown signal or server error.
+	select {
+	case err := <-serverErrors:
+		return err
+	case <-ctx.Done():
+		logger.Info("Shutdown signal received")
+	}
+
+	// Initiate graceful shutdown with timeout.
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		GracefulShutdownTimeout,
+	)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("❌ Server shutdown error", map[string]interface{}{
-			"error": err.Error(),
-		})
-	} else {
-		logger.Info("✅ Server shutdown completed successfully")
-		fmt.Println()
-		fmt.Println("👋 Thank you for using Sentinel! Have a great day!")
-		fmt.Println()
+		return fmt.Errorf("graceful shutdown: %w", err)
 	}
+
+	logger.Info("Server shutdown completed")
+	return nil
 }
 
-// printBanner displays a professional application banner with system information
-func printBanner() {
+// printConfigurationHelp displays setup instructions when configuration is invalid.
+func printConfigurationHelp(validationErr error) {
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "Configuration Error: %v\n", validationErr)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Required Configuration:")
+	fmt.Fprintln(os.Stderr, "  JWT_SECRET - Secret key for JWT token signing")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Optional Configuration:")
+	fmt.Fprintln(os.Stderr, "  PORT        - HTTP server port (default: 8080)")
+	fmt.Fprintln(os.Stderr, "  DATABASE_URL - SQLite database path (default: in-memory)")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Setup Methods:")
+	fmt.Fprintln(os.Stderr, "  1. Environment variables")
+	fmt.Fprintln(os.Stderr, "  2. .env file in project root")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Generate Secure Secret:")
+	fmt.Fprintln(os.Stderr, "  openssl rand -base64 32")
+	fmt.Fprintln(os.Stderr, "  (PowerShell): [Convert]::ToBase64String([byte[]](1..32|%{Get-Random -Max 256}))")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "See README.md for detailed documentation")
+	fmt.Fprintln(os.Stderr)
+}
+
+// printStartupBanner displays service information and available endpoints.
+func printStartupBanner(port, storeInfo string, dbHealthy bool) {
+	const boxWidth = 70
+
+	// Safe padding helper that prevents negative repeat counts.
+	pad := func(s string, width int) string {
+		if len(s) >= width {
+			return s
+		}
+		padding := width - len(s)
+		if padding < 0 {
+			padding = 0
+		}
+		return s + strings.Repeat(" ", padding)
+	}
+
+	border := "+" + strings.Repeat("-", boxWidth) + "+"
+	emptyLine := "|" + strings.Repeat(" ", boxWidth) + "|"
+
+	// Build formatted lines with safe padding.
+	titleLine := fmt.Sprintf(" %s v%s ", AppName, AppVersion)
+	descLine := fmt.Sprintf(" %s ", AppDescription)
+	runtimeLine := fmt.Sprintf(" Runtime: %s on %s/%s (CPUs: %d) ",
+		runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
+	portLine := fmt.Sprintf(" Port: %s | Store: %s ", port, storeInfo)
+
+	healthStatus := "OK"
+	if !dbHealthy {
+		healthStatus = "FAILED"
+	}
+	healthLine := fmt.Sprintf(" Database: %s ", healthStatus)
+
+	// Print banner.
 	fmt.Println()
-	printBoxTop()
-	printBoxCenterf("🛡️ %s v%s", AppName, AppVersion)
-	printBoxEmpty()
-	printBoxLeft(AppDescription)
-	printBoxEmpty()
-	printBoxLeftf("🔧 Runtime: %s  Platform: %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH)
-	printBoxLeftf("⚡ CPUs: %d  Author: %s", runtime.NumCPU(), AppAuthor)
-	printBoxBottom()
+	fmt.Println(border)
+	fmt.Printf("|%s|\n", pad(titleLine, boxWidth))
+	fmt.Println(border)
+	fmt.Printf("|%s|\n", pad(descLine, boxWidth))
+	fmt.Println(emptyLine)
+	fmt.Printf("|%s|\n", pad(runtimeLine, boxWidth))
+	fmt.Printf("|%s|\n", pad(portLine, boxWidth))
+	fmt.Printf("|%s|\n", pad(healthLine, boxWidth))
+	fmt.Println(border)
+	fmt.Printf("| %-*s |\n", boxWidth-2, "API Endpoints:")
+	fmt.Printf("| %-*s |\n", boxWidth-2, "  POST /api/auth/register - User registration")
+	fmt.Printf("| %-*s |\n", boxWidth-2, "  POST /api/auth/login    - User authentication")
+	fmt.Printf("| %-*s |\n", boxWidth-2, "  POST /api/auth/refresh  - Token refresh")
+	fmt.Printf("| %-*s |\n", boxWidth-2, "  GET  /api/auth/profile  - User profile (JWT required)")
+	fmt.Printf("| %-*s |\n", boxWidth-2, "  GET  /health            - Health check")
+	fmt.Println(border)
+	serverURL := fmt.Sprintf(" Server: http://localhost:%s ", port)
+	fmt.Printf("|%s|\n", pad(serverURL, boxWidth))
+	fmt.Println(border)
 	fmt.Println()
-}
-
-// Box printing helpers
-const boxWidth = 71 // inner width of the box
-
-func padToWidth(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
-	}
-	return s + strings.Repeat(" ", width-len(s))
-}
-
-func printBoxTop() {
-	fmt.Println("╔" + strings.Repeat("═", boxWidth) + "╗")
-}
-
-func printBoxBottom() {
-	fmt.Println("╚" + strings.Repeat("═", boxWidth) + "╝")
-}
-
-func printBoxEmpty() {
-	fmt.Printf("║%s║\n", padToWidth("", boxWidth))
-}
-
-func printBoxLeft(s string) {
-	fmt.Printf("║ %s %s║\n", s, padToWidth("", boxWidth-2-len(s)))
-}
-
-func printBoxLeftf(format string, a ...interface{}) {
-	s := fmt.Sprintf(format, a...)
-	if len(s) > boxWidth-2 {
-		s = s[:boxWidth-5] + "..."
-	}
-	printBoxLeft(s)
-}
-
-func printBoxCenterf(format string, a ...interface{}) {
-	s := fmt.Sprintf(format, a...)
-	if len(s) > boxWidth {
-		s = s[:boxWidth]
-	}
-	left := (boxWidth - len(s)) / 2
-	right := boxWidth - len(s) - left
-	fmt.Printf("║%s%s%s║\n", strings.Repeat(" ", left), s, strings.Repeat(" ", right))
 }
