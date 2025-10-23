@@ -1,0 +1,14 @@
+# Ignore local files and artifacts
+**/bin/
+**/build/
+*.log
+*.env
+.env.local
+node_modules
+.DS_Store
+/*.exe
+/*.dll
+/*.pdb
+certs/
+*.crt
+*.key

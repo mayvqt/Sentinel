@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  sentinel:
+    build: .
+    image: sentinel:local
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - TLS_ENABLED=${TLS_ENABLED:-false}
+      - TLS_CERT_FILE=/certs/tls.crt
+      - TLS_KEY_FILE=/certs/tls.key
+    volumes:
+      - ./certs:/certs:ro
+      - ./:/app:ro
+    # For quick local debugging, override entrypoint to get a shell
+    # entrypoint: ["/bin/sh"]

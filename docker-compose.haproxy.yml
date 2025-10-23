@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  sentinel:
+    build: .
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - TLS_ENABLED=false
+    expose:
+      - "8080"
+
+  haproxy:
+    image: haproxy:2.6-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./certs/yourdomain.pem:/etc/ssl/certs/yourdomain.pem:ro
+    depends_on:
+      - sentinel

@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --providers.docker=true
+      - --certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.myresolver.acme.email=you@example.com
+      - --certificatesresolvers.myresolver.acme.storage=/acme/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_acme:/acme
+    restart: unless-stopped
+
+  sentinel:
+    build: .
+    image: sentinel:local
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - TLS_ENABLED=false
+    labels:
+      - "traefik.http.routers.sentinel.rule=Host(`yourdomain.example`)"
+      - "traefik.http.routers.sentinel.entrypoints=websecure"
+      - "traefik.http.routers.sentinel.tls.certresolver=myresolver"
+    expose:
+      - "8080"
+
+volumes:
+  traefik_acme:

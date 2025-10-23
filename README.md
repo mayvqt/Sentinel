@@ -1,402 +1,148 @@
-# 🛡️ Sentinel
+# Sentinel
 
-Enterprise-grade JWT authentication microservice built with Go — small,
-easy to deploy, and suitable as an auth microservice for your stack.
+Sentinel is a small, secure Go-based authentication microservice. This repository is configured to run locally and in containers with optional TLS support.
 
-[![Go Version](https://img.shields.io/badge/Go-1.25.3-00ADD8?logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+## Quick Docker (local) — build and run
 
-## 📋 Overview
+1. Ensure you have Docker and Docker Compose installed.
 
-Sentinel is a modern, production-ready authentication microservice designed for building secure, scalable applications. It provides JWT-based authentication with best-in-class security features including rate limiting, comprehensive input validation, and secure password hashing.
+2. Create a strong JWT secret and (optionally) TLS certs. For local testing you can use the included PowerShell script to generate self-signed certs on Windows:
 
-### ✨ Key Features
-
-- 🔐 **JWT Authentication** - Secure token-based authentication using industry-standard JWT
-- 🛡️ **Enterprise Security** - Built-in rate limiting, security headers, and CORS protection
-- 📊 **Dual Storage Options** - SQLite for production, in-memory for development
-- ✅ **Comprehensive Validation** - Email validation, password strength checks, input sanitization
-- 🔒 **Secure Password Hashing** - bcrypt with configurable cost factors
-- 📝 **Structured Logging** - Contextual logging with multiple severity levels
-- 🚀 **Production Ready** - Graceful shutdown, health checks, and robust error handling
-- 🧪 **Well Tested** - Extensive unit test coverage for critical components
-- 🔄 **Token Refresh** - Access + refresh tokens with rotation support
-- 🆔 **Request IDs** - Every request includes a request ID header (`X-Request-ID`) for tracing
-- ⚡ **High Performance** - Lightweight and efficient with minimal dependencies
-
-## 🏗️ Architecture
-
-```
-sentinel/
-├── cmd/
-│   └── server/          # Alternative server entry point
-├── internal/
-│   ├── auth/           # JWT and password helpers
-│   ├── config/         # Configuration management
-│   ├── handlers/       # HTTP handlers
-│   ├── logger/         # Structured logger
-│   ├── middleware/     # Security, CORS, rate limit, request-ID
-│   ├── models/         # Domain models
-│   ├── server/         # HTTP server wiring
-│   ├── store/          # SQLite and in-memory stores
-│   └── validation/     # Input validation
+```powershell
+.
+scripts\generate-cert.ps1 -OutDir .\certs -CommonName localhost
 ```
 
-## 🚀 Quick Start
+3. Build and run with Docker Compose (example using TLS disabled):
 
-### Prerequisites
-
-- Go 1.25.3 or higher
-- Git
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/mayvqt/Sentinel.git
-   cd Sentinel
-   ```
-
-2. **Install dependencies**
-   ```bash
-   go mod download
-   ```
-
-3. **Set up environment variables**
-   
-   Create a `.env` file in the project root:
-   ```env
-   PORT=8080
-   DATABASE_URL=sqlite://./sentinel.db
-   JWT_SECRET=your-super-secure-secret-key-here-min-32-chars
-   ```
-
-   ⚠️ **Important**: Generate a secure JWT secret:
-   ```bash
-   # Linux/Mac
-   openssl rand -base64 32
-   
-   # Windows (PowerShell)
-   [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
-   ```
-
-4. **Run the service**
-
-   **Option 1: Using Go directly**
-   ```bash
-   go run .
-   ```
-
-   **Option 2: Build and run**
-   ```bash
-   go build .
-   ./Sentinel
-   ```
-
-The server will start on `http://localhost:8080` (or your configured port).
-
-## 📡 API Endpoints
-
-### Health Check
-
-**GET** `/health`
-
-Check if the service is running and healthy.
-
-```bash
-curl http://localhost:8080/health
+```powershell
+$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
+$env:TLS_ENABLED = 'false'
+docker-compose up --build
 ```
 
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-10-23T12:00:00Z"
-}
+4. To enable TLS, mount certs and set TLS_ENABLED to true. Example (PowerShell):
+
+```powershell
+$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
+$env:TLS_ENABLED = 'true'
+docker-compose up --build
 ```
 
----
+By default the container exposes port 8080.
 
-### User Registration
+## Dockerfile notes
 
-**POST** `/api/auth/register`
+- Multi-stage build: compiles the Go binary in an Alpine-based builder and produces a minimal distroless image.
+- TLS certificates should be mounted into the container and referenced by `TLS_CERT_FILE` and `TLS_KEY_FILE` environment variables.
 
-Register a new user account.
+## Environment variables
 
-**Request:**
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "johndoe",
-    "email": "john@example.com",
-    "password": "SecureP@ssw0rd123"
-  }'
+- JWT_SECRET (required) — Use a strong secret of at least 32 characters.
+# Sentinel
+
+Sentinel is a small, secure Go-based authentication microservice focused on simplicity and secure defaults. This repository contains examples to run the service directly, in Docker, or behind a TLS-terminating reverse proxy.
+
+## Quickstart (local)
+
+Prerequisites: Go 1.20+, Docker (optional), Docker Compose (optional).
+
+1. Build and run locally (development):
+
+```powershell
+setx JWT_SECRET "a-very-strong-32-char-or-longer-secret"
+go run ./cmd/server
 ```
 
-**Response (201 Created):**
-```json
-{
-  "id": "uuid-here",
-  "username": "johndoe",
-  "email": "john@example.com",
-  "created_at": "2025-10-23T12:00:00Z"
-}
+2. Run with Docker Compose (simple local):
+
+```powershell
+$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
+docker-compose up --build
 ```
 
-**Validation Rules:**
-- Username: 3-30 characters, alphanumeric and underscores only
-- Email: Valid email format
-- Password: Minimum 8 characters, must contain uppercase, lowercase, number, and special character
+By default the service listens on port 8080.
 
----
+## Docker (images and compose)
 
-### User Login
+- The provided `Dockerfile` is multi-stage: it compiles a static Linux binary and produces a minimal runtime image.
+- Use `TLS_ENABLED=false` when the container is behind a TLS-terminating proxy.
+- Mount certificate files into the container and set `TLS_CERT_FILE` and `TLS_KEY_FILE` only if you want the app itself to serve TLS.
 
-**POST** `/api/auth/login`
+Example (run container directly):
 
-Authenticate and receive JWT tokens.
-
-**Request:**
-```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "johndoe",
-    "password": "SecureP@ssw0rd123"
-  }'
+```powershell
+docker build -t sentinel:local .
+docker run -e JWT_SECRET=$env:JWT_SECRET -p 8080:8080 sentinel:local
 ```
 
-**Response (200 OK):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600
-}
+## Reverse proxy & TLS patterns
+
+Recommended: terminate TLS at the proxy. This centralizes certificate automation and renewal and keeps the app simple.
+
+- Caddy: included `Caddyfile` + `docker-compose.caddy.yml` — Caddy will automatically provision certificates via Let's Encrypt and reverse-proxy to the app.
+- Traefik: see `docker-compose.traefik.yml` — Traefik integrates with Docker and ACME to automate cert management.
+- Nginx: see `nginx/sentinel.conf` and `docker-compose.nginx.yml` — classic setup; pair with Certbot (host or container) for certificate management.
+- HAProxy: see `haproxy.cfg` and `docker-compose.haproxy.yml` — show how to provide PEM files for TLS termination.
+
+Example: run Caddy with compose (Caddy terminates TLS, Sentinel runs HTTP):
+
+```powershell
+$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
+docker-compose -f docker-compose.caddy.yml up --build
 ```
 
----
+## Certbot (obtaining certificates)
 
-### Token Refresh
+If you prefer to run certbot directly (host or container):
 
-**POST** `/api/auth/refresh`
+- Use `certbot certonly --webroot` or the standalone mode to obtain certificates.
+- Store certificates under `/etc/letsencrypt` and mount them into your reverse proxy or the Sentinel container.
+- Use staging for testing (`--staging`) to avoid LetsEncrypt rate limits.
 
-Refresh an expired access token using a valid refresh token.
+Example: certbot in a container (first-run example):
 
-**Request:**
-```bash
-curl -X POST http://localhost:8080/api/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }'
+```powershell
+# Run once to obtain certs (use --staging to test)
+docker run --rm -p 80:80 -v "%cd%\letsencrypt:/etc/letsencrypt" certbot/certbot certonly --standalone --non-interactive --agree-tos -m you@example.com -d yourdomain.example
 ```
 
-**Response (200 OK):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600
-}
+Then mount `letsencrypt` into your proxy or sentinel container.
+
+## API (quick examples)
+
+The service exposes typical auth endpoints (see `internal/handlers`): register, login, refresh, and a protected profile endpoint.
+
+Example curl (register):
+
+```powershell
+curl -X POST http://localhost:8080/v1/register -H "Content-Type: application/json" -d '{"username":"alice","password":"P@ssw0rd","email":"alice@example.com"}'
 ```
 
----
+Login example:
 
-### Get User Profile
-
-**GET** `/api/auth/profile`
-
-Get the authenticated user's profile. This endpoint requires an access token.
-
-**Request:**
-```bash
-curl http://localhost:8080/api/auth/profile \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
-  -H "X-Request-ID: your-request-id-optional"
+```powershell
+curl -X POST http://localhost:8080/v1/login -H "Content-Type: application/json" -d '{"username":"alice","password":"P@ssw0rd"}'
 ```
 
-**Response (200 OK):**
-```json
-{
-  "id": "1",
-  "username": "johndoe",
-  "email": "john@example.com",
-  "created_at": "2025-10-23T12:00:00Z"
-}
+Protected request (replace ACCESS_TOKEN with the token returned by login):
+
+```powershell
+curl -H "Authorization: Bearer ACCESS_TOKEN" http://localhost:8080/v1/profile
 ```
 
----
+## Security checklist
 
-### Protected Endpoint Example
+- Always run in HTTPS in production; prefer proxy termination (Caddy/Traefik) or use managed TLS.
+- Keep `JWT_SECRET` strong and store it in a secrets manager. Do not commit it or store in plaintext in repos.
+- Use CA-signed certificates for production.
+- Monitor certificate renewal and ensure services reload or use proxies that auto-reload.
 
-**GET** `/api/protected`
+## Troubleshooting
 
-A demonstration of a protected endpoint requiring authentication.
+- If ACME challenges fail, ensure ports 80/443 are not blocked and DNS points to the server.
+- Use Let's Encrypt staging to test flows without hitting rate limits.
 
-**Request:**
-```bash
-curl http://localhost:8080/api/protected \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
+## License
 
-**Response (200 OK):**
-```json
-{
-  "message": "This is a protected resource",
-  "user_id": "uuid-here"
-}
-```
-
-## 🔒 Security Features
-
-### Rate Limiting
-
-Sentinel implements intelligent rate limiting to prevent abuse:
-
-- **Authentication endpoints**: 5 requests per 2 seconds per IP
-- **General endpoints**: 10 requests per second per IP
-- Automatic cleanup of expired rate limit entries
-
-### Security Headers
-
-All responses include security headers:
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `X-XSS-Protection: 1; mode=block`
-- `Content-Security-Policy: default-src 'self'`
-
-### CORS Protection
-
-Configurable CORS middleware with support for:
-- Allowed origins
-- Allowed methods
-- Allowed headers
-- Credentials support
-
-### Input Validation & Sanitization
-
-- SQL injection prevention
-- XSS attack prevention
-- Email format validation
-- Password strength requirements
-- Username format validation
-
-### Password Security
-
-- bcrypt hashing with cost factor 12
-- Secure random salt generation
-- No plaintext password storage
-
-## 🧪 Testing
-
-Run the test suite:
-
-```bash
-# Run all tests
-go test ./...
-
-# Run with coverage
-go test -cover ./...
-
-# Run with verbose output
-go test -v ./...
-
-# Run specific package tests
-go test ./internal/auth
-go test ./internal/handlers
-go test ./internal/validation
-```
-
-## 🔧 Configuration
-
-Sentinel can be configured through environment variables or `.env` files:
-
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port | 8080 | No |
-| `DATABASE_URL` | SQLite database path | - | No* |
-| `JWT_SECRET` | Secret key for JWT signing | - | **Yes** |
-
-*If `DATABASE_URL` is not provided, Sentinel will use an in-memory store (suitable for development only).
-
-### Example `.env` file
-
-```env
-# Server Configuration
-PORT=8080
-
-# Database Configuration
-DATABASE_URL=sqlite://./data/sentinel.db
-
-# JWT Configuration
-JWT_SECRET=YkBm/hZZYyq8VHQ4caGT8m22VJH/F02fPDKvCFuNTuo=
-```
-
-## 📊 Logging
-
-Sentinel uses structured logging with multiple severity levels:
-
-- **DEBUG**: Detailed diagnostic information
-- **INFO**: General informational messages
-- **WARN**: Warning messages for potentially harmful situations
-- **ERROR**: Error events that might still allow the application to continue
-
-Example log output:
-```
-[INFO] 2025-10-23T12:00:00Z Configuration loaded successfully | app=Sentinel version=0.1.0
-[INFO] 2025-10-23T12:00:01Z Using SQLite store | database=./sentinel.db
-[INFO] 2025-10-23T12:00:01Z Server starting | address=:8080
-```
-
-## 🐳 Docker Support (Coming Soon)
-
-Docker support is planned for future releases.
-
-## 🚢 Production Deployment
-
-### Best Practices
-
-1. **Always use HTTPS** in production
-2. **Set a strong JWT secret** (minimum 32 characters)
-3. **Use SQLite or external database** (not in-memory store)
-4. **Configure CORS** with specific allowed origins
-5. **Monitor rate limiting** and adjust as needed
-6. **Enable structured logging** and centralize logs
-7. **Implement health check monitoring**
-8. **Use environment variables** for configuration
-9. **Regular security updates** of dependencies
-10. **Set up database backups**
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👤 Author
-
-**mayvqt**
-
-- GitHub: [@mayvqt](https://github.com/mayvqt)
-
-## 🙏 Acknowledgments
-
-- [golang-jwt](https://github.com/golang-jwt/jwt) for JWT implementation
-- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) for pure Go SQLite driver
-- [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) for bcrypt implementation
-
----
-
-<p align="center">Made with ❤️ and Go</p>
+MIT

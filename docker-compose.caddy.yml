@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  sentinel:
+    build: .
+    image: sentinel:local
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - TLS_ENABLED=false # Sentinel runs HTTP; Caddy terminates TLS
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - sentinel
+
+volumes:
+  caddy_data:
+  caddy_config:

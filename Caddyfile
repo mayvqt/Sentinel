@@ -1,0 +1,9 @@
+{
+    # Global options
+    email you@example.com
+}
+
+# Replace example.com with your domain
+example.com {
+    reverse_proxy sentinel:8080
+}
