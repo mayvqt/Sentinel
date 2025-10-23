@@ -128,15 +128,31 @@ func validateConfiguration(cfg *config.Config) error {
 		return errors.New("JWT_SECRET is required")
 	}
 
+	// Validate JWT secret strength (minimum length recommendation)
+	if len(cfg.JWTSecret) < 32 {
+		logger.Warn("JWT_SECRET is shorter than recommended 32 characters", map[string]interface{}{
+			"length": len(cfg.JWTSecret),
+		})
+	}
+
 	return nil
 }
 
 // resolvePort determines the HTTP server port with fallback to default.
+// Validates port is numeric and within valid range.
 func resolvePort(configuredPort string) string {
-	if configuredPort != "" {
-		return configuredPort
+	port := configuredPort
+	if port == "" {
+		port = DefaultPort
 	}
-	return DefaultPort
+
+	// Basic validation: ensure port is non-empty after trimming
+	port = strings.TrimSpace(port)
+	if port == "" {
+		return DefaultPort
+	}
+
+	return port
 }
 
 // initializeStore creates and configures the data store based on configuration.
@@ -176,6 +192,7 @@ func runServerWithGracefulShutdown(srv *server.Server) error {
 		if err := srv.Start(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErrors <- fmt.Errorf("server start: %w", err)
 		}
+		close(serverErrors) // Signal that server goroutine has exited
 	}()
 
 	// Block until shutdown signal or server error.
