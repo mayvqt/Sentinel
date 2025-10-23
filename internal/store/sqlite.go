@@ -21,12 +21,10 @@ func NewSQLite(path string) (Store, error) {
 	// Parse database URL to extract path
 	dbPath := strings.TrimPrefix(path, "sqlite://")
 
-	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=1&_journal_mode=WAL&_timeout=5000")
+	db, err := sql.Open("sqlite", dbPath+"?_foreign_keys=1&_journal_mode=WAL&_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
-	}
-
-	// Configure connection pool
+	} // Configure connection pool
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
