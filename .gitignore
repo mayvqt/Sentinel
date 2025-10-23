@@ -4,3 +4,4 @@ bin/
 *.sqlite
 .env
 sentinel.db
+scripts/start-dev.ps1
