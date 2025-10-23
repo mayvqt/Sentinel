@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/mayvqt/Sentinel/internal/auth"
-	"github.com/mayvqt/Sentinel/internal/middleware"
 	"github.com/mayvqt/Sentinel/internal/config"
+	"github.com/mayvqt/Sentinel/internal/middleware"
 	"github.com/mayvqt/Sentinel/internal/store"
 )
 
