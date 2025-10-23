@@ -14,8 +14,11 @@ import (
 
 // Server holds the HTTP server and store.
 type Server struct {
-	httpServer *http.Server
-	store      store.Store
+	httpServer  *http.Server
+	store       store.Store
+	tlsCertFile string
+	tlsKeyFile  string
+	tlsEnabled  bool
 }
 
 // New constructs a Server with middleware and routes configured.
@@ -83,7 +86,22 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
-	return &Server{httpServer: srv, store: s}
+	return &Server{
+		httpServer:  srv,
+		store:       s,
+		tlsCertFile: "",
+		tlsKeyFile:  "",
+		tlsEnabled:  false,
+	}
+}
+
+// NewWithTLS constructs a Server with TLS/HTTPS support enabled.
+func NewWithTLS(addr string, s store.Store, h *handlers.Handlers, certFile, keyFile string) *Server {
+	server := New(addr, s, h)
+	server.tlsCertFile = certFile
+	server.tlsKeyFile = keyFile
+	server.tlsEnabled = true
+	return server
 }
 
 // applyMiddleware composes middleware into a single http.Handler.
@@ -103,7 +121,14 @@ func (s *Server) Start(ctx context.Context) error {
 		_ = s.httpServer.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Printf("🚀 Sentinel server listening on %s\n", s.httpServer.Addr)
+	protocol := "http"
+	if s.tlsEnabled {
+		protocol = "https"
+		fmt.Printf("� Sentinel server listening on %s://%s (TLS enabled)\n", protocol, s.httpServer.Addr)
+		return s.httpServer.ListenAndServeTLS(s.tlsCertFile, s.tlsKeyFile)
+	}
+
+	fmt.Printf("⚠️  Sentinel server listening on %s://%s (TLS disabled - not recommended for production)\n", protocol, s.httpServer.Addr)
 	return s.httpServer.ListenAndServe()
 }
 

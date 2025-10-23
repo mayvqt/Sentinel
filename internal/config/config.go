@@ -12,6 +12,9 @@ type Config struct {
 	Port        string
 	DatabaseURL string
 	JWTSecret   string
+	TLSCertFile string
+	TLSKeyFile  string
+	TLSEnabled  bool
 }
 
 // Load reads configuration from .env and environment variables.
@@ -30,6 +33,9 @@ func Load() (*Config, error) {
 		Port:        getEnvWithDefault("PORT", ""),
 		DatabaseURL: getEnvWithDefault("DATABASE_URL", ""),
 		JWTSecret:   getEnvWithDefault("JWT_SECRET", ""),
+		TLSCertFile: getEnvWithDefault("TLS_CERT_FILE", ""),
+		TLSKeyFile:  getEnvWithDefault("TLS_KEY_FILE", ""),
+		TLSEnabled:  os.Getenv("TLS_ENABLED") == "true" || os.Getenv("TLS_ENABLED") == "1",
 	}, nil
 }
 

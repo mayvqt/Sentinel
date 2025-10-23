@@ -102,11 +102,23 @@ func run() int {
 	// Initialize HTTP handlers.
 	handlerService := handlers.New(dataStore, authService)
 
-	// Create HTTP server instance.
-	srv := server.New(":"+port, dataStore, handlerService)
+	// Create HTTP server instance with TLS support if configured.
+	var srv *server.Server
+	if cfg.TLSEnabled && cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		srv = server.NewWithTLS(":"+port, dataStore, handlerService, cfg.TLSCertFile, cfg.TLSKeyFile)
+		logger.Info("TLS/HTTPS enabled", map[string]interface{}{
+			"cert_file": cfg.TLSCertFile,
+		})
+	} else {
+		srv = server.New(":"+port, dataStore, handlerService)
+		if cfg.TLSEnabled {
+			logger.Warn("TLS enabled but certificate files not configured - falling back to HTTP")
+		}
+	}
 
 	// Display startup information.
-	printStartupBanner(port, storeInfo, true)
+	tlsStatus := cfg.TLSEnabled && cfg.TLSCertFile != "" && cfg.TLSKeyFile != ""
+	printStartupBanner(port, storeInfo, true, tlsStatus)
 
 	// Run server with graceful shutdown handling.
 	if err := runServerWithGracefulShutdown(srv); err != nil {
@@ -227,8 +239,11 @@ func printConfigurationHelp(validationErr error) {
 	fmt.Fprintln(os.Stderr, "  JWT_SECRET - Secret key for JWT token signing")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Optional Configuration:")
-	fmt.Fprintln(os.Stderr, "  PORT        - HTTP server port (default: 8080)")
+	fmt.Fprintln(os.Stderr, "  PORT         - HTTP server port (default: 8080)")
 	fmt.Fprintln(os.Stderr, "  DATABASE_URL - SQLite database path (default: in-memory)")
+	fmt.Fprintln(os.Stderr, "  TLS_ENABLED  - Enable HTTPS/TLS (true/false, default: false)")
+	fmt.Fprintln(os.Stderr, "  TLS_CERT_FILE - Path to TLS certificate file (required if TLS enabled)")
+	fmt.Fprintln(os.Stderr, "  TLS_KEY_FILE  - Path to TLS private key file (required if TLS enabled)")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Setup Methods:")
 	fmt.Fprintln(os.Stderr, "  1. Environment variables")
@@ -243,7 +258,7 @@ func printConfigurationHelp(validationErr error) {
 }
 
 // printStartupBanner displays service information and available endpoints.
-func printStartupBanner(port, storeInfo string, dbHealthy bool) {
+func printStartupBanner(port, storeInfo string, dbHealthy, tlsEnabled bool) {
 	const boxWidth = 70
 
 	// Safe padding helper that prevents negative repeat counts.
@@ -266,7 +281,14 @@ func printStartupBanner(port, storeInfo string, dbHealthy bool) {
 	descLine := fmt.Sprintf(" %s ", AppDescription)
 	runtimeLine := fmt.Sprintf(" Runtime: %s on %s/%s (CPUs: %d) ",
 		runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
-	portLine := fmt.Sprintf(" Port: %s | Store: %s ", port, storeInfo)
+
+	protocol := "http"
+	securityIcon := "⚠️  HTTP"
+	if tlsEnabled {
+		protocol = "https"
+		securityIcon = "🔒 HTTPS"
+	}
+	portLine := fmt.Sprintf(" Port: %s | Store: %s | Protocol: %s ", port, storeInfo, securityIcon)
 
 	healthStatus := "OK"
 	if !dbHealthy {
@@ -292,8 +314,13 @@ func printStartupBanner(port, storeInfo string, dbHealthy bool) {
 	fmt.Printf("| %-*s |\n", boxWidth-2, "  GET  /api/auth/profile  - User profile (JWT required)")
 	fmt.Printf("| %-*s |\n", boxWidth-2, "  GET  /health            - Health check")
 	fmt.Println(border)
-	serverURL := fmt.Sprintf(" Server: http://localhost:%s ", port)
+	serverURL := fmt.Sprintf(" Server: %s://localhost:%s ", protocol, port)
 	fmt.Printf("|%s|\n", pad(serverURL, boxWidth))
 	fmt.Println(border)
+
+	if !tlsEnabled {
+		fmt.Println("⚠️  WARNING: Running in HTTP mode. Enable TLS for production use.")
+		fmt.Println("Set TLS_ENABLED=true, TLS_CERT_FILE=/path/to/cert.pem, TLS_KEY_FILE=/path/to/key.pem")
+	}
 	fmt.Println()
 }
