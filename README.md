@@ -17,131 +17,92 @@ scripts\generate-cert.ps1 -OutDir .\certs -CommonName localhost
 
 ```powershell
 $env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
-$env:TLS_ENABLED = 'false'
-docker-compose up --build
-```
-
-4. To enable TLS, mount certs and set TLS_ENABLED to true. Example (PowerShell):
-
-```powershell
-$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
-$env:TLS_ENABLED = 'true'
-docker-compose up --build
-```
-
-By default the container exposes port 8080.
-
-## Dockerfile notes
-
-- Multi-stage build: compiles the Go binary in an Alpine-based builder and produces a minimal distroless image.
-- TLS certificates should be mounted into the container and referenced by `TLS_CERT_FILE` and `TLS_KEY_FILE` environment variables.
-
-## Environment variables
-
-- JWT_SECRET (required) — Use a strong secret of at least 32 characters.
 # Sentinel
 
-Sentinel is a small, secure Go-based authentication microservice focused on simplicity and secure defaults. This repository contains examples to run the service directly, in Docker, or behind a TLS-terminating reverse proxy.
+Sentinel is a focused, secure Go-based authentication microservice with practical examples for running locally, in containers, or behind TLS-terminating reverse proxies.
 
-## Quickstart (local)
+## Quickstart
 
-Prerequisites: Go 1.20+, Docker (optional), Docker Compose (optional).
-
-1. Build and run locally (development):
+Run locally (development):
 
 ```powershell
-setx JWT_SECRET "a-very-strong-32-char-or-longer-secret"
+setx JWT_SECRET "replace-with-strong-secret"
 go run ./cmd/server
 ```
 
-2. Run with Docker Compose (simple local):
+Run with Docker Compose (simple local):
 
 ```powershell
-$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
+$env:JWT_SECRET = 'replace-with-strong-secret'
 docker-compose up --build
 ```
 
 By default the service listens on port 8080.
 
-## Docker (images and compose)
+## Docker notes
 
-- The provided `Dockerfile` is multi-stage: it compiles a static Linux binary and produces a minimal runtime image.
-- Use `TLS_ENABLED=false` when the container is behind a TLS-terminating proxy.
-- Mount certificate files into the container and set `TLS_CERT_FILE` and `TLS_KEY_FILE` only if you want the app itself to serve TLS.
+- The `Dockerfile` is multi-stage and produces a minimal runtime image.
+- If a reverse proxy terminates TLS, run Sentinel with `TLS_ENABLED=false` and let the proxy handle certificates.
+- If Sentinel should serve TLS itself, mount certificates into the container and set `TLS_CERT_FILE` and `TLS_KEY_FILE`.
 
-Example (run container directly):
+## Reverse proxy options
 
-```powershell
-docker build -t sentinel:local .
-docker run -e JWT_SECRET=$env:JWT_SECRET -p 8080:8080 sentinel:local
-```
+Included examples (in the repo):
 
-## Reverse proxy & TLS patterns
+- Caddy: `Caddyfile` + `docker-compose.caddy.yml` — automatic HTTPS via ACME and simple reverse-proxying.
+- Traefik: `docker-compose.traefik.yml` — Docker-friendly ACME integration.
+- Nginx: `nginx/sentinel.conf` + `docker-compose.nginx.yml` — traditional proxy with certs from `/etc/letsencrypt`.
+- HAProxy: `haproxy.cfg` + `docker-compose.haproxy.yml` — TLS termination with PEM files.
 
-Recommended: terminate TLS at the proxy. This centralizes certificate automation and renewal and keeps the app simple.
+Prefer proxy termination for certificates; it simplifies renewal and scaling.
 
-- Caddy: included `Caddyfile` + `docker-compose.caddy.yml` — Caddy will automatically provision certificates via Let's Encrypt and reverse-proxy to the app.
-- Traefik: see `docker-compose.traefik.yml` — Traefik integrates with Docker and ACME to automate cert management.
-- Nginx: see `nginx/sentinel.conf` and `docker-compose.nginx.yml` — classic setup; pair with Certbot (host or container) for certificate management.
-- HAProxy: see `haproxy.cfg` and `docker-compose.haproxy.yml` — show how to provide PEM files for TLS termination.
+## Certbot (host or container)
 
-Example: run Caddy with compose (Caddy terminates TLS, Sentinel runs HTTP):
+Use `certbot certonly --webroot` or standalone mode to obtain certificates and mount them into your proxy or container. Use `--staging` for testing.
 
-```powershell
-$env:JWT_SECRET = 'a-very-strong-32-char-or-longer-secret'
-docker-compose -f docker-compose.caddy.yml up --build
-```
-
-## Certbot (obtaining certificates)
-
-If you prefer to run certbot directly (host or container):
-
-- Use `certbot certonly --webroot` or the standalone mode to obtain certificates.
-- Store certificates under `/etc/letsencrypt` and mount them into your reverse proxy or the Sentinel container.
-- Use staging for testing (`--staging`) to avoid LetsEncrypt rate limits.
-
-Example: certbot in a container (first-run example):
+Example (container, staging):
 
 ```powershell
-# Run once to obtain certs (use --staging to test)
-docker run --rm -p 80:80 -v "%cd%\letsencrypt:/etc/letsencrypt" certbot/certbot certonly --standalone --non-interactive --agree-tos -m you@example.com -d yourdomain.example
+docker run --rm -p 80:80 -v "%cd%\letsencrypt:/etc/letsencrypt" certbot/certbot certonly --standalone --non-interactive --agree-tos --staging -m you@example.com -d yourdomain.example
 ```
 
-Then mount `letsencrypt` into your proxy or sentinel container.
+## API examples
 
-## API (quick examples)
-
-The service exposes typical auth endpoints (see `internal/handlers`): register, login, refresh, and a protected profile endpoint.
-
-Example curl (register):
+Register:
 
 ```powershell
 curl -X POST http://localhost:8080/v1/register -H "Content-Type: application/json" -d '{"username":"alice","password":"P@ssw0rd","email":"alice@example.com"}'
 ```
 
-Login example:
+Login:
 
 ```powershell
 curl -X POST http://localhost:8080/v1/login -H "Content-Type: application/json" -d '{"username":"alice","password":"P@ssw0rd"}'
 ```
 
-Protected request (replace ACCESS_TOKEN with the token returned by login):
+Protected endpoint (replace ACCESS_TOKEN):
 
 ```powershell
 curl -H "Authorization: Bearer ACCESS_TOKEN" http://localhost:8080/v1/profile
 ```
 
+## Environment variables
+
+- `JWT_SECRET` (required) — a strong secret (recommend >=32 bytes).
+- `PORT` (optional) — default 8080.
+- `DATABASE_URL` (optional) — e.g. `sqlite://./data.db`. Omit to use in-memory store for development.
+- `TLS_ENABLED`, `TLS_CERT_FILE`, `TLS_KEY_FILE` — configure if the app should serve TLS directly.
+
 ## Security checklist
 
-- Always run in HTTPS in production; prefer proxy termination (Caddy/Traefik) or use managed TLS.
-- Keep `JWT_SECRET` strong and store it in a secrets manager. Do not commit it or store in plaintext in repos.
-- Use CA-signed certificates for production.
-- Monitor certificate renewal and ensure services reload or use proxies that auto-reload.
+- Always use HTTPS in production (prefer proxy termination with ACME-capable proxies).
+- Protect `JWT_SECRET` with a secrets manager.
+- Use CA-signed certs in production and monitor renewals.
 
 ## Troubleshooting
 
-- If ACME challenges fail, ensure ports 80/443 are not blocked and DNS points to the server.
-- Use Let's Encrypt staging to test flows without hitting rate limits.
+- If ACME/Let's Encrypt challenges fail, check that ports 80/443 are reachable and DNS is correct.
+- Use staging endpoints during testing to avoid rate limits.
 
 ## License
 
