@@ -32,18 +32,32 @@ func withTimeout(ctx context.Context, timeout time.Duration) (context.Context, c
 	return context.WithTimeout(ctx, timeout)
 }
 
-// NewSQLite creates or opens an SQLite database at path with proper configuration.
+// NewSQLite creates or opens an SQLite database at path with enterprise-grade configuration.
+// Configures WAL mode, foreign keys, and connection pooling for optimal performance.
 func NewSQLite(path string) (Store, error) {
 	// Parse database URL to extract path
 	dbPath := strings.TrimPrefix(path, "sqlite://")
 
-	db, err := sql.Open("sqlite", dbPath+"?_foreign_keys=1&_journal_mode=WAL&_timeout=5000")
+	// Enterprise SQLite configuration:
+	// - _foreign_keys=1: Enable foreign key constraints
+	// - _journal_mode=WAL: Write-Ahead Logging for better concurrency
+	// - _timeout=5000: 5 second busy timeout
+	// - _cache_size=-64000: 64MB cache (negative = KB)
+	// - _synchronous=NORMAL: Balance between safety and performance
+	db, err := sql.Open("sqlite", dbPath+"?_foreign_keys=1&_journal_mode=WAL&_timeout=5000&_cache_size=-64000&_synchronous=NORMAL")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
-	} // Configure connection pool
+	}
+
+	// Configure connection pool for enterprise workloads
+	// MaxOpenConns: Maximum number of open connections (25 is good for most workloads)
+	// MaxIdleConns: Connections to keep idle (5-10 is typical)
+	// ConnMaxLifetime: Maximum time a connection can be reused
+	// ConnMaxIdleTime: Maximum time a connection can be idle
 	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(10 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 
 	s := &sqliteStore{db: db}
 	if err := s.init(); err != nil {

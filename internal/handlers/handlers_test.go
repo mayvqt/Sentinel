@@ -59,17 +59,26 @@ func TestRegisterLoginHealth(t *testing.T) {
 	}
 	body, _ := io.ReadAll(lres.Body)
 	var loginResponse struct {
-		Token string      `json:"token"`
-		User  models.User `json:"user"`
+		AccessToken  string      `json:"access_token"`
+		RefreshToken string      `json:"refresh_token"`
+		TokenType    string      `json:"token_type"`
+		ExpiresIn    int         `json:"expires_in"`
+		User         models.User `json:"user"`
 	}
 	_ = json.Unmarshal(body, &loginResponse)
-	if loginResponse.Token == "" {
-		t.Fatalf("expected token in login response")
+	if loginResponse.AccessToken == "" {
+		t.Fatalf("expected access_token in login response")
+	}
+	if loginResponse.RefreshToken == "" {
+		t.Fatalf("expected refresh_token in login response")
+	}
+	if loginResponse.TokenType != "Bearer" {
+		t.Fatalf("expected token_type to be Bearer, got %s", loginResponse.TokenType)
 	}
 
 	// Test /me endpoint
 	meReq := httptest.NewRequest(http.MethodGet, "/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+loginResponse.Token)
+	meReq.Header.Set("Authorization", "Bearer "+loginResponse.AccessToken)
 
 	// Add user context (normally done by auth middleware)
 	claims := &auth.Claims{
