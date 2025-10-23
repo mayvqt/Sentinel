@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mayvqt/Sentinel/internal/auth"
+	"github.com/mayvqt/Sentinel/internal/logger"
 	"github.com/mayvqt/Sentinel/internal/models"
 	"github.com/mayvqt/Sentinel/internal/store"
 	"github.com/mayvqt/Sentinel/internal/validation"
@@ -62,8 +63,19 @@ type loginRequest struct {
 
 // Register creates a new user with comprehensive validation and security checks.
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
+	log := logger.WithFields(map[string]interface{}{
+		"handler":  "register",
+		"method":   r.Method,
+		"username": "",
+		"email":    "",
+	})
+
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Warn("Invalid JSON payload in registration request", map[string]interface{}{
+			"handler": "register",
+			"error":   err.Error(),
+		})
 		writeErrorResponse(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
@@ -73,8 +85,17 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	req.Email = validation.SanitizeInput(req.Email)
 	req.Password = validation.SanitizeInput(req.Password)
 
+	log = logger.WithFields(map[string]interface{}{
+		"handler":  "register",
+		"username": req.Username,
+		"email":    req.Email,
+	})
+
 	// Validate the registration request
 	if err := validation.ValidateRegisterRequest(req.Username, req.Email, req.Password); err != nil {
+		log.Warn("Registration validation failed", map[string]interface{}{
+			"error": err.Error(),
+		})
 		writeErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -82,10 +103,14 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	// Check if user already exists
 	existingUser, err := h.Store.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
+		log.Error("Database error while checking existing user", map[string]interface{}{
+			"error": err.Error(),
+		})
 		writeErrorResponse(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	if existingUser != nil {
+		log.Warn("Registration attempt with existing username")
 		writeErrorResponse(w, "Username already exists", http.StatusConflict)
 		return
 	}
@@ -93,6 +118,9 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	// Hash password with strong settings
 	hashedPassword, err := auth.HashPassword(req.Password)
 	if err != nil {
+		log.Error("Password hashing failed", map[string]interface{}{
+			"error": err.Error(),
+		})
 		writeErrorResponse(w, "Failed to process password", http.StatusInternalServerError)
 		return
 	}
@@ -109,12 +137,22 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	userID, err := h.Store.CreateUser(r.Context(), user)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
+			log.Warn("User creation failed due to duplicate", map[string]interface{}{
+				"error": err.Error(),
+			})
 			writeErrorResponse(w, err.Error(), http.StatusConflict)
 			return
 		}
+		log.Error("User creation failed", map[string]interface{}{
+			"error": err.Error(),
+		})
 		writeErrorResponse(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
+
+	log.Info("User successfully registered", map[string]interface{}{
+		"user_id": userID,
+	})
 
 	// Return success response with user ID (no sensitive data)
 	response := map[string]interface{}{
@@ -125,9 +163,7 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
-}
-
-// Login validates credentials and returns a JWT on success with rate limiting considerations.
+} // Login validates credentials and returns a JWT on success with rate limiting considerations.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

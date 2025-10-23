@@ -17,35 +17,85 @@ type Server struct {
 	store      store.Store
 }
 
-// New constructs a Server. addr is the listen address (":8080").
+// New constructs a Server with security middleware and rate limiting.
 func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", h.Health)
-	mux.HandleFunc("/register", h.Register)
-	mux.HandleFunc("/login", h.Login)
 
-	// Example of a protected route
-	mux.Handle("/me", middleware.WithAuth(h.Auth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
-	})))
+	// Create rate limiters for different endpoints
+	authRateLimit := middleware.NewRateLimiter(time.Second*2, 5)   // 5 requests per 2 seconds for auth
+	generalRateLimit := middleware.NewRateLimiter(time.Second, 10) // 10 requests per second for general
+
+	// Public endpoints
+	mux.Handle("/health", applyMiddleware(
+		http.HandlerFunc(h.Health),
+		middleware.WithSecurityHeaders(),
+		middleware.WithRateLimit(generalRateLimit),
+		middleware.WithLogging(),
+	))
+
+	// Authentication endpoints with stricter rate limiting
+	mux.Handle("/register", applyMiddleware(
+		http.HandlerFunc(h.Register),
+		middleware.WithSecurityHeaders(),
+		middleware.WithRateLimit(authRateLimit),
+		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithLogging(),
+	))
+
+	mux.Handle("/login", applyMiddleware(
+		http.HandlerFunc(h.Login),
+		middleware.WithSecurityHeaders(),
+		middleware.WithRateLimit(authRateLimit),
+		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithLogging(),
+	))
+
+	// Protected endpoints
+	mux.Handle("/me", applyMiddleware(
+		http.HandlerFunc(h.Me),
+		middleware.WithSecurityHeaders(),
+		middleware.WithRateLimit(generalRateLimit),
+		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithAuth(h.Auth),
+		middleware.WithLogging(),
+	))
 
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		Addr:           addr,
+		Handler:        mux,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
+
 	return &Server{httpServer: srv, store: s}
+}
+
+// applyMiddleware applies middleware in reverse order (last applied runs first).
+func applyMiddleware(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
+	}
+	return handler
 }
 
 // Start runs the server until the provided context is canceled.
 func (s *Server) Start(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
-		_ = s.httpServer.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.httpServer.Shutdown(shutdownCtx)
 	}()
-	fmt.Printf("listening on %s\n", s.httpServer.Addr)
+
+	fmt.Printf("🚀 Sentinel server listening on %s\n", s.httpServer.Addr)
 	return s.httpServer.ListenAndServe()
+}
+
+// Shutdown gracefully shuts down the server.
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }
 
 // Close cleans up store and other resources.
