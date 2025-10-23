@@ -28,6 +28,25 @@ func New(s store.Store, a *auth.Auth) *Handlers {
 	return &Handlers{Store: s, Auth: a}
 }
 
+// ErrorResponse represents a structured error response.
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message,omitempty"`
+}
+
+// writeErrorResponse writes a structured error response.
+func writeErrorResponse(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	response := ErrorResponse{
+		Error:   http.StatusText(statusCode),
+		Message: message,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 // registerRequest is the expected payload for POST /register.
 type registerRequest struct {
 	Username string `json:"username"`
