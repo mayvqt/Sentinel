@@ -12,7 +12,8 @@ Core features
 
 Repository layout
 
-- `cmd/server/` — service entrypoint
+- `main.go` — main application entrypoint
+- `cmd/server/` — alternative service entrypoint
 - `internal/config/` — configuration loading
 - `internal/models/` — domain models (User, etc.)
 - `internal/store/` — persistence interfaces and implementations
@@ -35,8 +36,14 @@ copy .env.example .env
 2. Build and run locally:
 
 ```powershell
-go build ./...
-go run ./cmd/server
+go build .
+go run .
+```
+
+Or use the development script:
+
+```powershell
+./scripts/start-dev.ps1
 ```
 
 3. The server currently contains placeholders and stubs. See `docs/USAGE.md` for the next commands for running migrations and interacting with the API when implemented.
