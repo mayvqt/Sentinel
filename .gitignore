@@ -1,0 +1,6 @@
+bin/
+*.exe
+*.db
+*.sqlite
+.env
+sentinel.db
