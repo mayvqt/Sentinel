@@ -25,7 +25,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	authRateLimit := middleware.NewRateLimiter(time.Second*2, 5)   // 5 requests per 2 seconds for auth
 	generalRateLimit := middleware.NewRateLimiter(time.Second, 10) // 10 requests per second for general
 
-	// Public endpoints
+	// Health check endpoint
 	mux.Handle("/health", applyMiddleware(
 		http.HandlerFunc(h.Health),
 		middleware.WithSecurityHeaders(),
@@ -33,8 +33,8 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 		middleware.WithLogging(),
 	))
 
-	// Authentication endpoints with stricter rate limiting
-	mux.Handle("/register", applyMiddleware(
+	// Authentication endpoints with /api/auth prefix and stricter rate limiting
+	mux.Handle("/api/auth/register", applyMiddleware(
 		http.HandlerFunc(h.Register),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
@@ -42,7 +42,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 		middleware.WithLogging(),
 	))
 
-	mux.Handle("/login", applyMiddleware(
+	mux.Handle("/api/auth/login", applyMiddleware(
 		http.HandlerFunc(h.Login),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
@@ -50,8 +50,8 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 		middleware.WithLogging(),
 	))
 
-	// Protected endpoints
-	mux.Handle("/me", applyMiddleware(
+	// Protected endpoints with /api/auth prefix
+	mux.Handle("/api/auth/profile", applyMiddleware(
 		http.HandlerFunc(h.Me),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(generalRateLimit),
