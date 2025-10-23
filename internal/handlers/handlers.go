@@ -6,7 +6,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,43 +41,71 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// Register creates a new user. This stub performs minimal validation,
-// hashes the password, stores the user and returns 201 with a small JSON
-// body.
+// Register creates a new user with comprehensive validation and security checks.
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
-		return
-	}
-	if req.Username == "" || req.Password == "" {
-		http.Error(w, "username and password required", http.StatusBadRequest)
+		writeErrorResponse(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
 
-	// Hash password
-	hashed, err := auth.HashPassword(req.Password)
+	// Sanitize inputs
+	req.Username = validation.SanitizeInput(req.Username)
+	req.Email = validation.SanitizeInput(req.Email)
+	req.Password = validation.SanitizeInput(req.Password)
+
+	// Validate the registration request
+	if err := validation.ValidateRegisterRequest(req.Username, req.Email, req.Password); err != nil {
+		writeErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Check if user already exists
+	existingUser, err := h.Store.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
-		http.Error(w, "failed to hash password", http.StatusInternalServerError)
+		writeErrorResponse(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if existingUser != nil {
+		writeErrorResponse(w, "Username already exists", http.StatusConflict)
 		return
 	}
 
-	u := &models.User{
+	// Hash password with strong settings
+	hashedPassword, err := auth.HashPassword(req.Password)
+	if err != nil {
+		writeErrorResponse(w, "Failed to process password", http.StatusInternalServerError)
+		return
+	}
+
+	// Create user
+	user := &models.User{
 		Username:  req.Username,
 		Email:     req.Email,
-		Password:  hashed,
+		Password:  hashedPassword,
 		Role:      "user",
 		CreatedAt: time.Now().UTC(),
 	}
 
-	id, err := h.Store.CreateUser(r.Context(), u)
+	userID, err := h.Store.CreateUser(r.Context(), user)
 	if err != nil {
-		http.Error(w, "failed to create user", http.StatusInternalServerError)
+		if strings.Contains(err.Error(), "already exists") {
+			writeErrorResponse(w, err.Error(), http.StatusConflict)
+			return
+		}
+		writeErrorResponse(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
+	// Return success response with user ID (no sensitive data)
+	response := map[string]interface{}{
+		"id":      userID,
+		"message": "User created successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
+	json.NewEncoder(w).Encode(response)
 }
 
 // Login validates credentials and returns a JWT on success.
