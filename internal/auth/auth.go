@@ -24,8 +24,9 @@ var (
 // Claims is the JWT payload used throughout the API. Keep fields minimal to
 // avoid overloading tokens with data.
 type Claims struct {
-	UserID string `json:"uid"`
-	Role   string `json:"role"`
+	UserID    string `json:"uid"`
+	Role      string `json:"role"`
+	TokenType string `json:"token_type"` // "access" or "refresh"
 	jwt.RegisteredClaims
 }
 
@@ -44,11 +45,15 @@ func New(cfg *config.Config) *Auth {
 
 // HashPassword returns a bcrypt hash for pw. Use the returned string for
 // storing user passwords. Returns ErrEmptyPassword when pw is empty.
+// Uses cost factor of 12 for enhanced security (enterprise-grade).
 func HashPassword(pw string) (string, error) {
 	if pw == "" {
 		return "", ErrEmptyPassword
 	}
-	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	// Cost of 12 provides strong security while maintaining reasonable performance
+	// Each increment doubles the time, so 12 is ~4x slower than default (10)
+	const enterpriseCost = 12
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), enterpriseCost)
 	if err != nil {
 		return "", err
 	}
@@ -64,8 +69,14 @@ func CheckPassword(hash, pw string) error {
 }
 
 // GenerateToken signs a JWT for userID with the given role and ttl.
-// ttl must be > 0.
+// ttl must be > 0. tokenType should be "access" or "refresh".
 func (a *Auth) GenerateToken(userID, role string, ttl time.Duration) (string, error) {
+	return a.GenerateTokenWithType(userID, role, "access", ttl)
+}
+
+// GenerateTokenWithType signs a JWT with a specific token type.
+// tokenType should be "access" or "refresh".
+func (a *Auth) GenerateTokenWithType(userID, role, tokenType string, ttl time.Duration) (string, error) {
 	if a.secret == "" {
 		return "", ErrNoSecret
 	}
@@ -74,8 +85,9 @@ func (a *Auth) GenerateToken(userID, role string, ttl time.Duration) (string, er
 	}
 	now := time.Now()
 	c := Claims{
-		UserID: userID,
-		Role:   role,
+		UserID:    userID,
+		Role:      role,
+		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),

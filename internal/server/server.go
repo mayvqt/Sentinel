@@ -50,6 +50,14 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 		middleware.WithLogging(),
 	))
 
+	mux.Handle("/api/auth/refresh", applyMiddleware(
+		http.HandlerFunc(h.RefreshToken),
+		middleware.WithSecurityHeaders(),
+		middleware.WithRateLimit(authRateLimit),
+		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithLogging(),
+	))
+
 	// Protected endpoints with /api/auth prefix
 	mux.Handle("/api/auth/profile", applyMiddleware(
 		http.HandlerFunc(h.Me),

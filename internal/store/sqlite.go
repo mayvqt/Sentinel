@@ -12,8 +12,24 @@ import (
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
+const (
+	// DefaultQueryTimeout is the default timeout for database queries
+	DefaultQueryTimeout = 5 * time.Second
+	// DefaultTxTimeout is the default timeout for database transactions
+	DefaultTxTimeout = 10 * time.Second
+)
+
 type sqliteStore struct {
 	db *sql.DB
+}
+
+// withTimeout creates a context with timeout if one isn't already set
+func withTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		// Context already has a deadline, don't override it
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // NewSQLite creates or opens an SQLite database at path with proper configuration.
@@ -80,6 +96,9 @@ func (s *sqliteStore) Ping(ctx context.Context) error {
 }
 
 func (s *sqliteStore) CreateUser(ctx context.Context, u *models.User) (int64, error) {
+	ctx, cancel := withTimeout(ctx, DefaultQueryTimeout)
+	defer cancel()
+
 	if u == nil {
 		return 0, errors.New("user cannot be nil")
 	}
@@ -122,6 +141,9 @@ func (s *sqliteStore) CreateUser(ctx context.Context, u *models.User) (int64, er
 }
 
 func (s *sqliteStore) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	ctx, cancel := withTimeout(ctx, DefaultQueryTimeout)
+	defer cancel()
+
 	if username == "" {
 		return nil, errors.New("username cannot be empty")
 	}
@@ -144,6 +166,9 @@ func (s *sqliteStore) GetUserByUsername(ctx context.Context, username string) (*
 }
 
 func (s *sqliteStore) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
+	ctx, cancel := withTimeout(ctx, DefaultQueryTimeout)
+	defer cancel()
+
 	if id <= 0 {
 		return nil, errors.New("user ID must be positive")
 	}

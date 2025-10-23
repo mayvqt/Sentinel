@@ -61,6 +61,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+// refreshRequest is the expected payload for POST /refresh.
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
 // Register creates a new user with comprehensive validation and security checks.
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	log := logger.WithFields(map[string]interface{}{
@@ -195,21 +200,36 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate JWT token with 24-hour expiration
-	token, err := h.Auth.GenerateToken(
+	// Generate access token (1 hour) and refresh token (7 days)
+	accessToken, err := h.Auth.GenerateTokenWithType(
 		strconv.FormatInt(user.ID, 10),
 		user.Role,
-		24*time.Hour,
+		"access",
+		1*time.Hour,
 	)
 	if err != nil {
 		writeErrorResponse(w, "Failed to create authentication token", http.StatusInternalServerError)
 		return
 	}
 
-	// Return token and basic user info (no sensitive data)
+	refreshToken, err := h.Auth.GenerateTokenWithType(
+		strconv.FormatInt(user.ID, 10),
+		user.Role,
+		"refresh",
+		7*24*time.Hour,
+	)
+	if err != nil {
+		writeErrorResponse(w, "Failed to create refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	// Return tokens and basic user info (no sensitive data)
 	response := map[string]interface{}{
-		"token": token,
-		"user":  user.PublicUser(),
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"token_type":    "Bearer",
+		"expires_in":    3600, // 1 hour in seconds
+		"user":          user.PublicUser(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -265,4 +285,80 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	// Return user profile (excluding sensitive data)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user.PublicUser())
+}
+
+// RefreshToken exchanges a valid refresh token for new access and refresh tokens.
+// This implements token rotation for enhanced security.
+func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var req refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErrorResponse(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Validate refresh token
+	claims, err := h.Auth.ParseToken(req.RefreshToken)
+	if err != nil {
+		writeErrorResponse(w, "Invalid or expired refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify token type
+	if claims.TokenType != "refresh" {
+		writeErrorResponse(w, "Token is not a refresh token", http.StatusBadRequest)
+		return
+	}
+
+	// Parse user ID
+	userID, err := strconv.ParseInt(claims.UserID, 10, 64)
+	if err != nil {
+		writeErrorResponse(w, "Invalid user ID in token", http.StatusBadRequest)
+		return
+	}
+
+	// Verify user still exists
+	user, err := h.Store.GetUserByID(r.Context(), userID)
+	if err != nil {
+		writeErrorResponse(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if user == nil {
+		writeErrorResponse(w, "User not found", http.StatusUnauthorized)
+		return
+	}
+
+	// Generate new access token and refresh token (token rotation)
+	newAccessToken, err := h.Auth.GenerateTokenWithType(
+		claims.UserID,
+		claims.Role,
+		"access",
+		1*time.Hour,
+	)
+	if err != nil {
+		writeErrorResponse(w, "Failed to create access token", http.StatusInternalServerError)
+		return
+	}
+
+	newRefreshToken, err := h.Auth.GenerateTokenWithType(
+		claims.UserID,
+		claims.Role,
+		"refresh",
+		7*24*time.Hour,
+	)
+	if err != nil {
+		writeErrorResponse(w, "Failed to create refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	// Return new tokens
+	response := map[string]interface{}{
+		"access_token":  newAccessToken,
+		"refresh_token": newRefreshToken,
+		"token_type":    "Bearer",
+		"expires_in":    3600, // 1 hour in seconds
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
