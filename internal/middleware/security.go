@@ -4,6 +4,21 @@ import (
 	"net/http"
 )
 
+// WithMaxBodySize limits the size of request bodies to prevent DoS attacks.
+func WithMaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > maxBytes {
+				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			// Enforce limit even if Content-Length not set
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // WithSecurityHeaders adds common security headers to responses.
 func WithSecurityHeaders() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

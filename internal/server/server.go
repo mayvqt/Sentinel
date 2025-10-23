@@ -22,7 +22,8 @@ type Server struct {
 }
 
 // New constructs a Server with middleware and routes configured.
-func New(addr string, s store.Store, h *handlers.Handlers) *Server {
+// corsOrigins specifies allowed CORS origins; pass nil or empty slice to disable CORS.
+func New(addr string, s store.Store, h *handlers.Handlers, corsOrigins []string) *Server {
 	mux := http.NewServeMux()
 
 	// Create rate limiters for different endpoints
@@ -39,30 +40,36 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 	))
 
 	// Authentication endpoints with /api/auth prefix and stricter rate limiting
+	// Limit request body size to 1MB for auth endpoints
+	const maxAuthBodySize = 1 << 20 // 1 MB
+
 	mux.Handle("/api/auth/register", applyMiddleware(
 		http.HandlerFunc(h.Register),
 		middleware.WithRequestID(),
+		middleware.WithMaxBodySize(maxAuthBodySize),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
-		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithCORS(corsOrigins),
 		middleware.WithLogging(),
 	))
 
 	mux.Handle("/api/auth/login", applyMiddleware(
 		http.HandlerFunc(h.Login),
 		middleware.WithRequestID(),
+		middleware.WithMaxBodySize(maxAuthBodySize),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
-		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithCORS(corsOrigins),
 		middleware.WithLogging(),
 	))
 
 	mux.Handle("/api/auth/refresh", applyMiddleware(
 		http.HandlerFunc(h.RefreshToken),
 		middleware.WithRequestID(),
+		middleware.WithMaxBodySize(maxAuthBodySize),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(authRateLimit),
-		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithCORS(corsOrigins),
 		middleware.WithLogging(),
 	))
 
@@ -72,7 +79,7 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 		middleware.WithRequestID(),
 		middleware.WithSecurityHeaders(),
 		middleware.WithRateLimit(generalRateLimit),
-		middleware.WithCORS([]string{"*"}), // Configure allowed origins in production
+		middleware.WithCORS(corsOrigins),
 		middleware.WithAuth(h.Auth),
 		middleware.WithLogging(),
 	))
@@ -96,8 +103,8 @@ func New(addr string, s store.Store, h *handlers.Handlers) *Server {
 }
 
 // NewWithTLS constructs a Server with TLS/HTTPS support enabled.
-func NewWithTLS(addr string, s store.Store, h *handlers.Handlers, certFile, keyFile string) *Server {
-	server := New(addr, s, h)
+func NewWithTLS(addr string, s store.Store, h *handlers.Handlers, corsOrigins []string, certFile, keyFile string) *Server {
+	server := New(addr, s, h, corsOrigins)
 	server.tlsCertFile = certFile
 	server.tlsKeyFile = keyFile
 	server.tlsEnabled = true

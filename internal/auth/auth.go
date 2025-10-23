@@ -112,5 +112,21 @@ func (a *Auth) ParseToken(tokenStr string) (*Claims, error) {
 	if !t.Valid {
 		return nil, errors.New("token invalid")
 	}
+
+	// Explicit expiry check (jwt library checks this, but we add explicit validation)
+	if c.ExpiresAt != nil && time.Now().After(c.ExpiresAt.Time) {
+		return nil, errors.New("token expired")
+	}
+
+	// Validate issued-at time is not in the future (clock skew tolerance: 1 minute)
+	// This prevents tokens with IssuedAt far in the future while allowing minor clock drift
+	if c.IssuedAt != nil {
+		now := time.Now()
+		maxFutureSkew := 1 * time.Minute
+		if c.IssuedAt.Time.After(now.Add(maxFutureSkew)) {
+			return nil, errors.New("token issued too far in the future")
+		}
+	}
+
 	return c, nil
 }

@@ -106,12 +106,12 @@ func run() int {
 	// Create HTTP server instance with TLS support if configured.
 	var srv *server.Server
 	if cfg.TLSEnabled && cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-		srv = server.NewWithTLS(":"+port, dataStore, handlerService, cfg.TLSCertFile, cfg.TLSKeyFile)
+		srv = server.NewWithTLS(":"+port, dataStore, handlerService, cfg.CORSAllowedOrigins, cfg.TLSCertFile, cfg.TLSKeyFile)
 		logger.Info("TLS/HTTPS enabled", map[string]interface{}{
 			"cert_file": cfg.TLSCertFile,
 		})
 	} else {
-		srv = server.New(":"+port, dataStore, handlerService)
+		srv = server.New(":"+port, dataStore, handlerService, cfg.CORSAllowedOrigins)
 		if cfg.TLSEnabled {
 			logger.Warn("TLS enabled but certificate files not configured - falling back to HTTP")
 		}

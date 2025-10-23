@@ -63,7 +63,7 @@ func main() {
 	h := handlers.New(s, a)
 
 	// Create and start server
-	srv := server.New(":"+port, s, h)
+	srv := server.New(":"+port, s, h, cfg.CORSAllowedOrigins)
 
 	// Set up graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
