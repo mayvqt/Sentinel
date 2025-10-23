@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3" // SQLite driver
 	"github.com/mayvqt/Sentinel/internal/models"
 )
 
@@ -14,31 +16,58 @@ type sqliteStore struct {
 	db *sql.DB
 }
 
-// NewSQLite creates or opens an SQLite database at path.
+// NewSQLite creates or opens an SQLite database at path with proper configuration.
 func NewSQLite(path string) (Store, error) {
-	db, err := sql.Open("sqlite3", path)
+	// Parse database URL to extract path
+	dbPath := strings.TrimPrefix(path, "sqlite://")
+	
+	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=1&_journal_mode=WAL&_timeout=5000")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
+	
+	// Configure connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	s := &sqliteStore{db: db}
 	if err := s.init(); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 	return s, nil
 }
 
 func (s *sqliteStore) init() error {
-	schema := `CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        email TEXT,
-        password_hash TEXT NOT NULL,
-        role TEXT,
-        created_at DATETIME
-    );`
-	_, err := s.db.Exec(schema)
-	return err
+	// Create users table with proper constraints and indexes
+	schema := `
+	CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+		email TEXT UNIQUE COLLATE NOCASE,
+		password_hash TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'user',
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	
+	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+	
+	-- Trigger to update updated_at column
+	CREATE TRIGGER IF NOT EXISTS update_users_updated_at 
+		AFTER UPDATE ON users
+		BEGIN
+			UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+		END;
+	`
+	
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
+	}
+	
+	return nil
 }
 
 func (s *sqliteStore) Close() error { return s.db.Close() }
