@@ -1,5 +1,5 @@
-// Package main starts the Sentinel authentication service.
-// It wires configuration, logging, storage, auth, and HTTP server.
+// Package main bootstraps the Sentinel service for local execution.
+// It initializes config, logging, storage, auth, handlers, and the HTTP server.
 package main
 
 import (
