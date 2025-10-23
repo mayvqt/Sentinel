@@ -59,6 +59,11 @@ func WithLogging() func(http.Handler) http.Handler {
 				"bytes":       wrapped.written,
 			}
 
+			// Add request ID if available
+			if requestID := GetRequestID(r.Context()); requestID != "" {
+				fields["request_id"] = requestID
+			}
+
 			// Add query parameters if present
 			if r.URL.RawQuery != "" {
 				fields["query"] = r.URL.RawQuery
