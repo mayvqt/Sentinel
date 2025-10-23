@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
 	"github.com/mayvqt/Sentinel/internal/models"
+	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
 type sqliteStore struct {
