@@ -161,8 +161,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Generate JWT token with 24-hour expiration
 	token, err := h.Auth.GenerateToken(
-		strconv.FormatInt(user.ID, 10), 
-		user.Role, 
+		strconv.FormatInt(user.ID, 10),
+		user.Role,
 		24*time.Hour,
 	)
 	if err != nil {
