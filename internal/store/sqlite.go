@@ -20,12 +20,12 @@ type sqliteStore struct {
 func NewSQLite(path string) (Store, error) {
 	// Parse database URL to extract path
 	dbPath := strings.TrimPrefix(path, "sqlite://")
-	
+
 	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=1&_journal_mode=WAL&_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
-	
+
 	// Configure connection pool
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
@@ -62,17 +62,17 @@ func (s *sqliteStore) init() error {
 			UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 		END;
 	`
-	
+
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
-	
+
 	return nil
 }
 
-func (s *sqliteStore) Close() error { 
+func (s *sqliteStore) Close() error {
 	if s.db != nil {
-		return s.db.Close() 
+		return s.db.Close()
 	}
 	return nil
 }
@@ -100,8 +100,8 @@ func (s *sqliteStore) CreateUser(ctx context.Context, u *models.User) (int64, er
 
 	query := `INSERT INTO users (username, email, password_hash, role, created_at) 
 			  VALUES (?, ?, ?, ?, ?)`
-	
-	result, err := s.db.ExecContext(ctx, query, 
+
+	result, err := s.db.ExecContext(ctx, query,
 		u.Username, u.Email, u.Password, u.Role, u.CreatedAt)
 	if err != nil {
 		// Check for unique constraint violations
@@ -113,12 +113,12 @@ func (s *sqliteStore) CreateUser(ctx context.Context, u *models.User) (int64, er
 		}
 		return 0, fmt.Errorf("failed to create user: %w", err)
 	}
-	
+
 	id, err := result.LastInsertId()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get user ID: %w", err)
 	}
-	
+
 	u.ID = id
 	return id, nil
 }
@@ -127,12 +127,12 @@ func (s *sqliteStore) GetUserByUsername(ctx context.Context, username string) (*
 	if username == "" {
 		return nil, errors.New("username cannot be empty")
 	}
-	
+
 	query := `SELECT id, username, email, password_hash, role, created_at 
 			  FROM users WHERE username = ? COLLATE NOCASE`
-	
+
 	row := s.db.QueryRowContext(ctx, query, username)
-	
+
 	u := &models.User{}
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
 	if err != nil {
@@ -141,7 +141,7 @@ func (s *sqliteStore) GetUserByUsername(ctx context.Context, username string) (*
 		}
 		return nil, fmt.Errorf("failed to get user by username: %w", err)
 	}
-	
+
 	return u, nil
 }
 
@@ -149,12 +149,12 @@ func (s *sqliteStore) GetUserByID(ctx context.Context, id int64) (*models.User, 
 	if id <= 0 {
 		return nil, errors.New("user ID must be positive")
 	}
-	
+
 	query := `SELECT id, username, email, password_hash, role, created_at 
 			  FROM users WHERE id = ?`
-	
+
 	row := s.db.QueryRowContext(ctx, query, id)
-	
+
 	u := &models.User{}
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
 	if err != nil {
@@ -163,6 +163,6 @@ func (s *sqliteStore) GetUserByID(ctx context.Context, id int64) (*models.User, 
 		}
 		return nil, fmt.Errorf("failed to get user by ID: %w", err)
 	}
-	
+
 	return u, nil
 }
